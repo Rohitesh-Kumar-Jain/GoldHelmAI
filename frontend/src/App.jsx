@@ -74,6 +74,10 @@ function App() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const hasDashboardData =
+    dashboard.price !== null ||
+    dashboard.prediction !== null ||
+    dashboard.history.length > 0;
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -96,6 +100,18 @@ function App() {
         const historyResponse =
           historyResult.status === "fulfilled" ? historyResult.value : null;
 
+        const wasAborted =
+          abortController.signal.aborted ||
+          [priceResult, predictionResult, historyResult].some(
+            (result) =>
+              result.status === "rejected" &&
+              result.reason?.name === "AbortError",
+          );
+
+        if (wasAborted) {
+          return;
+        }
+
         if (
           priceResult.status === "rejected" &&
           predictionResult.status === "rejected" &&
@@ -110,7 +126,7 @@ function App() {
           history: normalizeHistory(historyResponse),
         });
       } catch (err) {
-        if (err.name !== "AbortError") {
+        if (err.name !== "AbortError" && !abortController.signal.aborted) {
           setError(err.message || "Unable to load GoldHelm AI market data.");
         }
       } finally {
@@ -147,7 +163,7 @@ function App() {
       {loading && <p className="status">Loading market data...</p>}
       {error && <p className="error">{error}</p>}
 
-      {!loading && !error && (
+      {!loading && hasDashboardData && (
         <>
           <section className="cards">
             <article className="card primary-card">
@@ -182,12 +198,19 @@ function App() {
             </div>
 
             <div className="history-list">
-              {dashboard.history.map((item) => (
-                <article className="history-row" key={item.date}>
-                  <span>{item.date}</span>
-                  <strong>{formatCurrency(item.close)}</strong>
+              {dashboard.history.length > 0 ? (
+                dashboard.history.map((item) => (
+                  <article className="history-row" key={item.date}>
+                    <span>{item.date}</span>
+                    <strong>{formatCurrency(item.close)}</strong>
+                  </article>
+                ))
+              ) : (
+                <article className="history-row">
+                  <span>History unavailable</span>
+                  <strong>Retrying backend feed</strong>
                 </article>
-              ))}
+              )}
             </div>
           </section>
         </>
