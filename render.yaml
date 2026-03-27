@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: auricai-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATA_LOOKBACK_DAYS
+        value: "180"
+      - key: MODEL_MIN_ROWS
+        value: "45"
