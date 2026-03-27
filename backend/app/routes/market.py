@@ -1,0 +1,53 @@
+import logging
+
+from fastapi import APIRouter, HTTPException
+
+from app.models.schemas import HistoryResponse, PredictResponse, PriceResponse
+from app.services.data_service import DataUnavailableError, GoldDataService
+from app.services.prediction_service import PredictionService
+from app.utils.config import get_settings
+
+
+logger = logging.getLogger(__name__)
+settings = get_settings()
+
+
+router = APIRouter(prefix=f"{settings.api_prefix}/api" if settings.api_prefix else "/api", tags=["market"])
+
+data_service = GoldDataService()
+prediction_service = PredictionService(data_service=data_service)
+
+
+@router.get("/price", response_model=PriceResponse)
+def get_latest_price() -> PriceResponse:
+    try:
+        latest = data_service.get_latest_price()
+        return PriceResponse(**latest)
+    except DataUnavailableError as exc:
+        logger.exception("Failed to load latest market price.")
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/history", response_model=HistoryResponse)
+def get_history() -> HistoryResponse:
+    try:
+        history = data_service.get_price_history()
+        return HistoryResponse(ticker=data_service.ticker, history=history)
+    except DataUnavailableError as exc:
+        logger.exception("Failed to load market history.")
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
+@router.get("/predict", response_model=PredictResponse)
+def get_prediction() -> PredictResponse:
+    try:
+        prediction = prediction_service.predict_next_day()
+        if prediction is None:
+            raise HTTPException(
+                status_code=503,
+                detail="Not enough market history is available to generate a prediction.",
+            )
+        return PredictResponse(**prediction)
+    except DataUnavailableError as exc:
+        logger.exception("Failed to generate market prediction.")
+        raise HTTPException(status_code=503, detail=str(exc)) from exc

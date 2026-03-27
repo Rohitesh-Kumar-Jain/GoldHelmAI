@@ -1,0 +1,248 @@
+:root {
+  color-scheme: light;
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  --bg: #f4efe5;
+  --panel: rgba(255, 252, 246, 0.88);
+  --panel-strong: #fffaf0;
+  --text: #23180a;
+  --muted: #6f5a3b;
+  --accent: #a56a00;
+  --accent-strong: #7c4f00;
+  --border: rgba(122, 90, 41, 0.18);
+  --shadow: 0 24px 60px rgba(77, 51, 18, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  background:
+    radial-gradient(circle at top left, rgba(255, 211, 130, 0.45), transparent 34%),
+    linear-gradient(180deg, #f8f1e5 0%, #f3ebde 52%, #efe4d4 100%);
+  color: var(--text);
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.app-shell {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 20px 72px;
+}
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 28px;
+  padding: 40px;
+  background:
+    linear-gradient(135deg, rgba(255, 241, 214, 0.96), rgba(249, 233, 196, 0.8)),
+    var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.hero-brand {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 28px;
+  align-items: center;
+}
+
+.hero::after {
+  content: "";
+  position: absolute;
+  inset: auto -70px -70px auto;
+  width: 240px;
+  height: 240px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(165, 106, 0, 0.18), transparent 70%);
+}
+
+.hero-copy {
+  max-width: 720px;
+}
+
+.hero-logo {
+  width: 100%;
+  max-width: 220px;
+  height: auto;
+  display: block;
+  filter: drop-shadow(0 18px 28px rgba(122, 79, 0, 0.22));
+}
+
+.eyebrow,
+.card-label {
+  margin: 0 0 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent-strong);
+}
+
+.hero h1,
+.card h2,
+.history-panel h3 {
+  font-family: Georgia, "Times New Roman", serif;
+}
+
+.hero h1 {
+  margin: 0;
+  font-size: clamp(2.5rem, 5vw, 4.6rem);
+  line-height: 0.96;
+}
+
+.hero-text,
+.card-meta,
+.section-heading p,
+.status {
+  color: var(--muted);
+}
+
+.hero-text {
+  max-width: 60ch;
+  margin: 18px 0 0;
+  font-size: 1.05rem;
+  line-height: 1.7;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.card,
+.history-panel {
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--panel);
+  backdrop-filter: blur(8px);
+  box-shadow: var(--shadow);
+}
+
+.card {
+  padding: 24px;
+}
+
+.primary-card {
+  background:
+    linear-gradient(180deg, rgba(255, 234, 196, 0.92), rgba(255, 250, 240, 0.92)),
+    var(--panel-strong);
+}
+
+.card h2 {
+  margin: 0;
+  font-size: clamp(2rem, 4vw, 3rem);
+}
+
+.card-meta {
+  margin: 12px 0 0;
+  line-height: 1.5;
+}
+
+.history-panel {
+  margin-top: 22px;
+  padding: 24px;
+}
+
+.section-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.section-heading h3 {
+  margin: 0;
+  font-size: 1.6rem;
+}
+
+.section-heading p {
+  margin: 0;
+}
+
+.history-list {
+  display: grid;
+  gap: 12px;
+}
+
+.history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: rgba(255, 250, 240, 0.8);
+  border: 1px solid rgba(122, 90, 41, 0.1);
+}
+
+.status,
+.error {
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 16px;
+}
+
+.status {
+  background: rgba(255, 250, 240, 0.8);
+}
+
+.error {
+  background: rgba(146, 24, 24, 0.08);
+  border: 1px solid rgba(146, 24, 24, 0.16);
+  color: #8a1f1f;
+}
+
+@media (max-width: 900px) {
+  .hero-brand {
+    grid-template-columns: 1fr;
+    justify-items: start;
+  }
+
+  .hero-logo {
+    max-width: 180px;
+  }
+
+  .cards {
+    grid-template-columns: 1fr;
+  }
+
+  .section-heading {
+    display: block;
+  }
+
+  .section-heading p {
+    margin-top: 8px;
+  }
+}
+
+@media (max-width: 640px) {
+  .app-shell {
+    padding: 20px 14px 48px;
+  }
+
+  .hero,
+  .card,
+  .history-panel {
+    border-radius: 20px;
+  }
+
+  .hero {
+    padding: 28px 22px;
+  }
+
+  .hero-brand {
+    gap: 18px;
+  }
+}
