@@ -107,16 +107,32 @@ class GoldDataService:
                 col[0] if isinstance(col, tuple) else col for col in normalized.columns
             ]
 
-        rename_map = {"Date": "date", "Close": "close"}
+        rename_map = {
+            "Date": "date",
+            "Close": "close",
+            "High": "high",
+            "Low": "low",
+            "Volume": "volume",
+        }
         normalized = normalized.rename(columns=rename_map)
 
         if "date" not in normalized.columns or "close" not in normalized.columns:
             raise DataUnavailableError("Expected date and close columns were not present.")
 
-        normalized = normalized[["date", "close"]].copy()
+        if "high" not in normalized.columns:
+            normalized["high"] = normalized["close"]
+        if "low" not in normalized.columns:
+            normalized["low"] = normalized["close"]
+        if "volume" not in normalized.columns:
+            normalized["volume"] = 0.0
+
+        normalized = normalized[["date", "close", "high", "low", "volume"]].copy()
         normalized["date"] = pd.to_datetime(normalized["date"], errors="coerce").dt.date
         normalized["close"] = pd.to_numeric(normalized["close"], errors="coerce")
-        normalized = normalized.dropna(subset=["date", "close"])
+        normalized["high"] = pd.to_numeric(normalized["high"], errors="coerce")
+        normalized["low"] = pd.to_numeric(normalized["low"], errors="coerce")
+        normalized["volume"] = pd.to_numeric(normalized["volume"], errors="coerce").fillna(0.0)
+        normalized = normalized.dropna(subset=["date", "close", "high", "low"])
         normalized = normalized.drop_duplicates(subset=["date"]).sort_values("date")
 
         if normalized.empty:

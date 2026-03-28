@@ -14,6 +14,7 @@ from app.agents.reasoning_agent import ReasoningAgent, ReasoningInput
 from app.rl.inference import RLInferenceService
 from app.services.data_service import GoldDataService
 from app.services.feature_service import FeatureEngineeringService
+from app.services.indicator_service import IndicatorService
 from app.services.news_service import NewsService
 from app.services.sentiment_service import SentimentService
 from app.utils.config import get_settings
@@ -40,12 +41,14 @@ class PredictionService:
         sentiment_service: SentimentService | None = None,
         reasoning_agent: ReasoningAgent | None = None,
         rl_inference_service: RLInferenceService | None = None,
+        indicator_service: IndicatorService | None = None,
     ) -> None:
         self.data_service = data_service
         self.news_service = news_service or NewsService()
         self.sentiment_service = sentiment_service or SentimentService()
         self.reasoning_agent = reasoning_agent or ReasoningAgent()
         self.rl_inference_service = rl_inference_service or RLInferenceService()
+        self.indicator_service = indicator_service or IndicatorService()
         self.feature_service = FeatureEngineeringService()
         self.settings = get_settings()
         self.feature_columns = [
@@ -65,6 +68,7 @@ class PredictionService:
 
     def predict_next_day(self) -> dict[str, Any] | None:
         raw = self.data_service.get_training_frame()
+        indicator_payload = self.indicator_service.compute_indicators(raw)
         news_articles = self.news_service.get_latest_news()
         sentiment = self.sentiment_service.analyze_articles(news_articles)
         sentiment_series = self.sentiment_service.build_daily_sentiment_series(
@@ -158,6 +162,9 @@ class PredictionService:
                 "score": round(float(sentiment["sentiment_score"]), 4),
                 "label": sentiment["label"],
             },
+            "technical_indicators": indicator_payload["technical_indicators"],
+            "indicator_summary": indicator_payload["indicator_summary"],
+            "indicator_charts": indicator_payload["indicator_charts"],
             "debate": {
                 "reasoning_agent": {
                     "decision": reasoning["decision"],

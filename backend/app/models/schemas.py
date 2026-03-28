@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -54,6 +55,12 @@ class BacktestPayload(BaseModel):
     max_drawdown: float
 
 
+class IndicatorSummary(BaseModel):
+    bullish: int
+    bearish: int
+    neutral: int
+
+
 class DebatePayload(BaseModel):
     reasoning_agent: DebateAgent
     rl_agent: DebateAgent
@@ -74,6 +81,9 @@ class PredictResponse(BaseModel):
     validation_mae: float
     risk_level: str
     sentiment: SentimentPayload
+    technical_indicators: dict[str, dict[str, Any]]
+    indicator_summary: IndicatorSummary
+    indicator_charts: dict[str, Any]
     debate: DebatePayload
     backtest: BacktestPayload
     final_analysis: list[str]
