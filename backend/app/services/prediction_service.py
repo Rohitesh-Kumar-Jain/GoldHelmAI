@@ -10,6 +10,8 @@ import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error
 
+from app.agents.reasoning_agent import ReasoningAgent, ReasoningInput
+from app.rl.inference import RLInferenceService
 from app.services.data_service import GoldDataService
 from app.services.feature_service import FeatureEngineeringService
 from app.services.news_service import NewsService
@@ -36,10 +38,14 @@ class PredictionService:
         data_service: GoldDataService,
         news_service: NewsService | None = None,
         sentiment_service: SentimentService | None = None,
+        reasoning_agent: ReasoningAgent | None = None,
+        rl_inference_service: RLInferenceService | None = None,
     ) -> None:
         self.data_service = data_service
         self.news_service = news_service or NewsService()
         self.sentiment_service = sentiment_service or SentimentService()
+        self.reasoning_agent = reasoning_agent or ReasoningAgent()
+        self.rl_inference_service = rl_inference_service or RLInferenceService()
         self.feature_service = FeatureEngineeringService()
         self.settings = get_settings()
         self.feature_columns = [
@@ -82,25 +88,90 @@ class PredictionService:
         )
         predicted_return = float(np.clip(predicted_return, -0.05, 0.05))
         prediction = max(0.0, last_close * (1.0 + predicted_return))
-        confidence = self._estimate_confidence(artifacts.validation_mae, last_close)
+        base_confidence = self._estimate_confidence(artifacts.validation_mae, last_close)
+        reasoning = self.reasoning_agent.reason(
+            ReasoningInput(
+                prediction=prediction,
+                current_price=last_close,
+                sentiment_score=float(sentiment["sentiment_score"]),
+                sentiment_label=sentiment["label"],
+                momentum_7=float(latest_row["momentum_7"]),
+                predicted_change_pct=predicted_return * 100,
+                base_confidence=base_confidence,
+            )
+        )
+        rl_result = self.rl_inference_service.infer(
+            current_price=last_close,
+            prediction=prediction,
+            sentiment_score=float(sentiment["sentiment_score"]),
+        )
+        final_decision = self._finalize_decision(
+            reasoning_decision=str(reasoning["decision"]),
+            rl_decision=str(rl_result["rl_decision"]),
+            reasoning_confidence=float(reasoning["confidence"]),
+            rl_confidence=float(rl_result["rl_confidence"]),
+        )
+        agreement = reasoning["decision"] == rl_result["rl_decision"]
+        final_analysis = self._finalize_analysis(
+            predicted_change_pct=predicted_return * 100,
+            sentiment_label=sentiment["label"],
+            reasoning_decision=str(reasoning["decision"]),
+            final_decision=final_decision,
+            rl_decision=str(rl_result["rl_decision"]),
+            agreement=agreement,
+            policy_source=str(rl_result["policy_source"]),
+        )
+        final_confidence = self._merge_confidence(
+            reasoning_confidence=float(reasoning["confidence"]),
+            rl_confidence=float(rl_result["rl_confidence"]),
+            aligned=agreement and final_decision == reasoning["decision"],
+        )
+        risk_level = self._risk_level(
+            volatility=float(latest_row["volatility"]),
+            disagreement=not agreement,
+        )
+
+        logger.info(
+            "Prediction generated: current=%s prediction=%s sentiment=%s reasoning=%s rl=%s final=%s risk=%s",
+            round(last_close, 2),
+            round(prediction, 2),
+            sentiment["label"],
+            reasoning["decision"],
+            rl_result["rl_decision"],
+            final_decision,
+            risk_level,
+        )
 
         return {
             "ticker": self.data_service.ticker,
             "as_of": str(latest_row["date"].date()),
+            "current_price": round(last_close, 2),
             "prediction": round(prediction, 2),
             "predicted_change_pct": round(predicted_return * 100, 3),
-            "confidence": round(confidence, 4),
+            "decision": final_decision,
+            "rl_decision": rl_result["rl_decision"],
+            "confidence": round(final_confidence, 4),
             "model": "random_forest_next_day_return",
             "validation_mae": round(artifacts.validation_mae, 2),
+            "risk_level": risk_level,
             "sentiment": {
                 "score": round(float(sentiment["sentiment_score"]), 4),
                 "label": sentiment["label"],
             },
-            "explanation": self._build_explanation(
-                latest_row=latest_row,
-                sentiment_label=sentiment["label"],
-                predicted_return=predicted_return,
-            ),
+            "debate": {
+                "reasoning_agent": {
+                    "decision": reasoning["decision"],
+                    "confidence": reasoning["confidence"],
+                },
+                "rl_agent": {
+                    "decision": rl_result["rl_decision"],
+                    "confidence": rl_result["rl_confidence"],
+                },
+                "policy_source": rl_result["policy_source"],
+                "agreement": reasoning["decision"] == rl_result["rl_decision"],
+            },
+            "backtest": rl_result["backtest"],
+            "final_analysis": final_analysis,
         }
 
     def get_latest_sentiment(self) -> dict[str, Any]:
@@ -166,33 +237,6 @@ class PredictionService:
         )
 
     @staticmethod
-    def _build_explanation(
-        latest_row: pd.Series,
-        sentiment_label: str,
-        predicted_return: float,
-    ) -> list[str]:
-        explanation: list[str] = []
-
-        if sentiment_label == "positive":
-            explanation.append("Positive market sentiment is supporting the forecast.")
-        elif sentiment_label == "negative":
-            explanation.append("Negative market sentiment is weighing on the forecast.")
-        else:
-            explanation.append("Market sentiment is neutral, so price signals carry more weight.")
-
-        if float(latest_row["momentum_7"]) > 0:
-            explanation.append("Short-term price momentum remains upward.")
-        else:
-            explanation.append("Short-term price momentum remains soft.")
-
-        if abs(predicted_return) > 0.01:
-            explanation.append("The model sees a meaningful next-session move versus the latest close.")
-        else:
-            explanation.append("The model expects only a modest next-session move.")
-
-        return explanation
-
-    @staticmethod
     def _estimate_confidence(validation_mae: float, reference_price: float) -> float:
         if reference_price <= 0:
             return 0.5
@@ -200,3 +244,70 @@ class PredictionService:
         relative_error = validation_mae / reference_price
         confidence = 1.0 - min(relative_error * 4.0, 0.45)
         return max(0.55, confidence)
+
+    @staticmethod
+    def _finalize_decision(
+        reasoning_decision: str,
+        rl_decision: str,
+        reasoning_confidence: float,
+        rl_confidence: float,
+    ) -> str:
+        if reasoning_decision == rl_decision:
+            return reasoning_decision
+
+        if rl_confidence > 0.9:
+            return rl_decision
+
+        if reasoning_confidence >= 0.85 and rl_confidence <= 0.65:
+            return reasoning_decision
+
+        if reasoning_confidence < 0.75 and rl_confidence < 0.75:
+            return "HOLD"
+
+        return "HOLD"
+
+    @staticmethod
+    def _merge_confidence(reasoning_confidence: float, rl_confidence: float, aligned: bool) -> float:
+        base = (reasoning_confidence + rl_confidence) / 2.0
+        if aligned:
+            base += 0.04
+        else:
+            base *= 0.6
+        return max(0.5, min(base, 0.97))
+
+    @staticmethod
+    def _finalize_analysis(
+        predicted_change_pct: float,
+        sentiment_label: str,
+        reasoning_decision: str,
+        final_decision: str,
+        rl_decision: str,
+        agreement: bool,
+        policy_source: str,
+    ) -> list[str]:
+        direction = "upward" if predicted_change_pct >= 0 else "downward"
+        analysis = [
+            f"ML model predicts {predicted_change_pct:.2f}% {direction} movement.",
+            f"Sentiment is {sentiment_label}, providing {'support' if sentiment_label != 'neutral' else 'weak confirmation'}.",
+        ]
+
+        if agreement:
+            analysis.append(f"Reasoning and RL agents agree on {final_decision}.")
+        else:
+            analysis.append(
+                f"RL agent suggests {rl_decision}, indicating a possible short-term reversal versus the {reasoning_decision} reasoning view."
+            )
+            analysis.append("Final decision is HOLD due to conflicting signals.")
+
+        if final_decision != "HOLD" and agreement:
+            analysis.append(f"Final decision is {final_decision} because both signals align.")
+
+        return analysis
+
+    @staticmethod
+    def _risk_level(volatility: float, disagreement: bool) -> str:
+        if disagreement or volatility >= 0.03:
+            return "high"
+        if volatility >= 0.015:
+            return "medium"
+        return "low"

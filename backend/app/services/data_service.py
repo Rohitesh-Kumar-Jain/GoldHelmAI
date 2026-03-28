@@ -12,6 +12,7 @@ from app.utils.config import get_settings
 
 
 logger = logging.getLogger(__name__)
+logging.getLogger("yfinance").setLevel(logging.WARNING)
 
 
 class DataUnavailableError(RuntimeError):
@@ -26,14 +27,23 @@ class GoldDataService:
         self.ticker = settings.gold_ticker
         self.lookback_days = settings.data_lookback_days
         self.cache_ttl_seconds = settings.data_cache_ttl_seconds
+        self.fetch_retry_cooldown_seconds = settings.data_fetch_retry_cooldown_seconds
         self.cache_path = Path(__file__).resolve().parents[2] / "data" / "gold_prices.csv"
         self.cache_path.parent.mkdir(parents=True, exist_ok=True)
         self._in_memory_cache: pd.DataFrame | None = None
         self._cache_loaded_at: datetime | None = None
+        self._last_fetch_failed_at: datetime | None = None
 
     def fetch_price_history(self) -> pd.DataFrame:
         if self._is_memory_cache_fresh():
             return self._in_memory_cache.copy()
+
+        if self._is_within_failure_cooldown():
+            logger.info(
+                "Using cached market data for %s during fetch cooldown window.",
+                self.ticker,
+            )
+            return self._load_cached_history()
 
         try:
             raw = yf.download(
@@ -49,10 +59,12 @@ class GoldDataService:
 
             frame = self._normalize_history_frame(raw.reset_index())
             self._persist_cache(frame)
+            self._last_fetch_failed_at = None
             logger.info("Fetched %s rows of market data for %s.", len(frame), self.ticker)
             return frame.copy()
         except Exception as exc:
-            logger.warning("Falling back to cached data for %s: %s", self.ticker, exc)
+            self._last_fetch_failed_at = datetime.now(UTC)
+            logger.warning("Falling back to cached data for %s after fetch failure: %s", self.ticker, exc)
             cached = self._load_cached_history()
             if cached.empty:
                 raise DataUnavailableError(
@@ -128,3 +140,10 @@ class GoldDataService:
 
         age_seconds = (datetime.now(UTC) - self._cache_loaded_at).total_seconds()
         return age_seconds < self.cache_ttl_seconds
+
+    def _is_within_failure_cooldown(self) -> bool:
+        if self._last_fetch_failed_at is None:
+            return False
+
+        age_seconds = (datetime.now(UTC) - self._last_fetch_failed_at).total_seconds()
+        return age_seconds < self.fetch_retry_cooldown_seconds

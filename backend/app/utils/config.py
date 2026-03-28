@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from functools import lru_cache
+from pathlib import Path
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
@@ -28,10 +29,21 @@ class Settings(BaseModel):
     data_lookback_days: int = Field(default=int(os.getenv("DATA_LOOKBACK_DAYS", "180")))
     model_min_rows: int = Field(default=int(os.getenv("MODEL_MIN_ROWS", "45")))
     data_cache_ttl_seconds: int = Field(default=int(os.getenv("DATA_CACHE_TTL_SECONDS", "1800")))
+    data_fetch_retry_cooldown_seconds: int = Field(
+        default=int(os.getenv("DATA_FETCH_RETRY_COOLDOWN_SECONDS", "900"))
+    )
     news_cache_ttl_seconds: int = Field(default=int(os.getenv("NEWS_CACHE_TTL_SECONDS", "1800")))
     news_article_limit: int = Field(default=int(os.getenv("NEWS_ARTICLE_LIMIT", "12")))
     gold_ticker: str = Field(default=os.getenv("GOLD_TICKER", "GC=F"))
     model_random_state: int = Field(default=int(os.getenv("MODEL_RANDOM_STATE", "42")))
+    rl_training_episodes: int = Field(default=int(os.getenv("RL_TRAINING_EPISODES", "35")))
+    rl_initial_cash: float = Field(default=float(os.getenv("RL_INITIAL_CASH", "10000")))
+    rl_model_path: str = Field(
+        default=os.getenv(
+            "RL_MODEL_PATH",
+            str((Path(__file__).resolve().parents[2] / "artifacts" / "q_agent.pkl")),
+        )
+    )
     database_url: str | None = Field(default=os.getenv("DATABASE_URL"))
     news_keywords: list[str] = Field(
         default_factory=lambda: [

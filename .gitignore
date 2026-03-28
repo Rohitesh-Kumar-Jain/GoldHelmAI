@@ -1,6 +1,9 @@
 # macOS
 .DS_Store
 
+.postman/
+postman
+
 # IDE
 .idea/
 .vscode/

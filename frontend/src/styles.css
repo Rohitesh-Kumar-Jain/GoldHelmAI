@@ -123,7 +123,9 @@ body {
 
 .card,
 .history-panel,
-.insight-panel {
+.insight-panel,
+.debate-panel,
+.backtest-panel {
   border: 1px solid var(--border);
   border-radius: 24px;
   background: var(--panel);
@@ -155,8 +157,24 @@ body {
   text-transform: capitalize;
 }
 
+.decision-card {
+  background:
+    linear-gradient(180deg, rgba(242, 224, 186, 0.92), rgba(255, 250, 240, 0.92)),
+    var(--panel-strong);
+}
+
+.decision-label {
+  letter-spacing: 0.04em;
+}
+
 .history-panel,
 .insight-panel {
+  margin-top: 22px;
+  padding: 24px;
+}
+
+.debate-panel,
+.backtest-panel {
   margin-top: 22px;
   padding: 24px;
 }
@@ -204,6 +222,32 @@ body {
   line-height: 1.6;
 }
 
+.debate-grid,
+.backtest-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.backtest-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.debate-card,
+.backtest-card {
+  border-radius: 18px;
+  border: 1px solid rgba(122, 90, 41, 0.1);
+  background: rgba(255, 250, 240, 0.82);
+  padding: 18px;
+}
+
+.debate-card h4,
+.backtest-card h4 {
+  margin: 0;
+  font-size: 1.4rem;
+  font-family: Georgia, "Times New Roman", serif;
+}
+
 .status,
 .error {
   margin-top: 18px;
@@ -235,6 +279,11 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .debate-grid,
+  .backtest-grid {
+    grid-template-columns: 1fr;
+  }
+
   .section-heading {
     display: block;
   }
@@ -252,7 +301,9 @@ body {
   .hero,
   .card,
   .history-panel,
-  .insight-panel {
+  .insight-panel,
+  .debate-panel,
+  .backtest-panel {
     border-radius: 20px;
   }
 
