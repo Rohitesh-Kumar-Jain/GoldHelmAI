@@ -796,6 +796,18 @@ function App() {
             </article>
 
             <article className="card decision-card">
+              <p className="card-label">Technical Signal</p>
+              <h2 className="decision-label" style={{ 
+                color: indicatorScore.signal.includes("BUY") ? "var(--bullish)" : 
+                       indicatorScore.signal.includes("SELL") ? "var(--bearish)" : "var(--neutral)" 
+              }}>
+                {indicatorScore.signal}
+              </h2>
+              <p className="card-meta">Combined score: {formatNumber(indicatorScore.score)}</p>
+              <p className="card-meta">Confidence: {formatPercent(indicatorScore.confidence * 100)}</p>
+            </article>
+
+            <article className="card decision-card">
               <p className="card-label">Final Decision</p>
               <h2 className="decision-label">{dashboard.prediction?.decision || "HOLD"}</h2>
               <p className="card-meta">Combined confidence: {formatPercent((dashboard.prediction?.confidence ?? NaN) * 100)}</p>
@@ -843,13 +855,20 @@ function App() {
               </article>
             </div>
 
-            <div style={{ marginBottom: 24, padding: "16px 20px", borderRadius: 16, background: "rgba(255, 250, 240, 0.9)", border: "1px solid rgba(122, 90, 41, 0.15)" }}>
+             <div style={{ marginBottom: 24, padding: "16px 20px", borderRadius: 16, background: "rgba(255, 250, 240, 0.9)", border: "1px solid rgba(122, 90, 41, 0.15)" }}>
               <p className="card-label">Technical Scoring Engine</p>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <div style={{ flex: 1, height: 8, borderRadius: 4, background: "linear-gradient(90deg, var(--bearish) 0%, var(--neutral) 50%, var(--bullish) 100%)", position: "relative" }}>
-                   <div style={{ position: "absolute", top: -6, bottom: -6, width: 4, background: "#333", borderRadius: 2, left: `${Math.max(0, Math.min(100, (indicatorScore.score + 100) / 2))}%` }} />
+                   {/* Threshold Markers */}
+                   <div style={{ position: "absolute", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.7)", left: "20%" }} title="Strong Sell / Sell" />
+                   <div style={{ position: "absolute", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.7)", left: "40%" }} title="Sell / Hold" />
+                   <div style={{ position: "absolute", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.7)", left: "60%" }} title="Hold / Buy" />
+                   <div style={{ position: "absolute", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.7)", left: "80%" }} title="Buy / Strong Buy" />
+                   
+                   {/* Indicator Thumb */}
+                   <div style={{ position: "absolute", top: -6, bottom: -6, width: 4, background: "#333", borderRadius: 2, left: `${Math.max(0, Math.min(100, (indicatorScore.score + 100) / 2))}%`, transition: "left 0.4s ease-out" }} />
                 </div>
-                <strong style={{ fontSize: "1.2rem", color: indicatorScore.score > 20 ? "var(--bullish)" : indicatorScore.score < -20 ? "var(--bearish)" : "var(--neutral)", minWidth: "180px", textAlign: "right" }}>
+                <strong style={{ fontSize: "1.2rem", color: indicatorScore.signal.includes("BUY") ? "var(--bullish)" : indicatorScore.signal.includes("SELL") ? "var(--bearish)" : "var(--neutral)", minWidth: "180px", textAlign: "right" }}>
                    {indicatorScore.signal} ({formatNumber(indicatorScore.score)})
                 </strong>
               </div>
