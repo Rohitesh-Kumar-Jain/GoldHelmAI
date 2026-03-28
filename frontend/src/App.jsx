@@ -737,6 +737,17 @@ function App() {
   };
   const technicalIndicators = dashboard.prediction?.technical_indicators ?? {};
   const indicatorCharts = dashboard.prediction?.indicator_charts ?? {};
+  const newsArticles = dashboard.sentiment?.articles || [];
+
+  const strongestSignals = useMemo(() => {
+     if (!technicalIndicators || Object.keys(technicalIndicators).length === 0) return [];
+     const sorted = Object.entries(technicalIndicators).filter(([k, v]) => v.signal && v.signal !== "HOLD").sort((a, b) => {
+        const weightA = a[1].signal.includes("STRONG") ? 2 : 1;
+        const weightB = b[1].signal.includes("STRONG") ? 2 : 1;
+        return weightB - weightA;
+     });
+     return sorted.slice(0, 3);
+  }, [technicalIndicators]);
 
   return (
     <main className="app-shell">
@@ -759,7 +770,30 @@ function App() {
 
       {!loading && hasDashboardData && (
         <>
-          <section className="cards cards-wide">
+          <section className="summary-bar" style={{ display: "flex", gap: "16px", background: "var(--card-bg)", padding: "16px", borderRadius: "12px", border: "1px solid var(--border)", margin: "0 24px 24px 24px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
+             <div style={{ display: "flex", flexDirection: "column" }}>
+                <span className="card-label">Expected Move</span>
+                <strong style={{ fontSize: "1.1rem" }}>{dashboard.prediction?.predicted_change_pct?.toFixed(3)}%</strong>
+             </div>
+             <div style={{ display: "flex", flexDirection: "column" }}>
+                <span className="card-label">Final Decision</span>
+                <strong style={{ fontSize: "1.1rem", color: dashboard.prediction?.decision?.includes("BUY") ? "var(--bullish)" : dashboard.prediction?.decision?.includes("SELL") ? "var(--bearish)" : "var(--neutral)" }}>{dashboard.prediction?.decision || "HOLD"}</strong>
+             </div>
+             <div style={{ display: "flex", flexDirection: "column" }}>
+                <span className="card-label">Risk Level</span>
+                <strong style={{ fontSize: "1.1rem", textTransform: "capitalize", color: dashboard.prediction?.risk_level === "high" ? "var(--bearish)" : "inherit" }}>{dashboard.prediction?.risk_level || "low"}</strong>
+             </div>
+             <div style={{ display: "flex", flexDirection: "column" }}>
+                <span className="card-label">Tech Consensus</span>
+                <strong style={{ fontSize: "1.1rem", color: indicatorScore.score > 20 ? "var(--bullish)" : indicatorScore.score < -20 ? "var(--bearish)" : "var(--neutral)" }}>{indicatorScore.signal}</strong>
+             </div>
+             <div style={{ display: "flex", flexDirection: "column", flex: "1 1 auto", minWidth: "200px", borderLeft: "1px solid var(--border)", paddingLeft: "16px" }}>
+                <span className="card-label">Bottom Line</span>
+                <em style={{ fontSize: "0.95rem", color: "var(--text-muted)" }}>{dashboard.prediction?.final_analysis?.[0] || "Awaiting prediction data"}</em>
+             </div>
+          </section>
+
+          <section className="cards cards-wide" style={{ marginTop: 0 }}>
             <article className="card primary-card">
               <p className="card-label">Current Close</p>
               <h2>{formatCurrency(dashboard.price?.price)}</h2>
@@ -840,20 +874,32 @@ function App() {
               <p>Ten charted indicators computed from the latest OHLCV history in the backend.</p>
             </div>
 
-            <div className="summary-strip">
-              <article className="summary-chip bullish-chip">
-                <span className="chip-label">Bullish</span>
-                <strong>{indicatorSummary.bullish}</strong>
-              </article>
-              <article className="summary-chip bearish-chip">
-                <span className="chip-label">Bearish</span>
-                <strong>{indicatorSummary.bearish}</strong>
-              </article>
-              <article className="summary-chip neutral-chip">
-                <span className="chip-label">Neutral</span>
-                <strong>{indicatorSummary.neutral}</strong>
-              </article>
+            <div style={{ marginBottom: "24px", background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: "12px", padding: "16px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                 <strong style={{ fontSize: "0.95rem" }}>Technical Consensus Breakdown</strong>
+                 <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>{indicatorSummary.bullish} Bullish &nbsp;•&nbsp; {indicatorSummary.neutral} Neutral &nbsp;•&nbsp; {indicatorSummary.bearish} Bearish</span>
+              </div>
+              <div style={{ display: "flex", width: "100%", height: "12px", borderRadius: "6px", overflow: "hidden" }}>
+                 <div style={{ width: `${(indicatorSummary.bearish / 10) * 100}%`, background: "var(--bearish)" }} />
+                 <div style={{ width: `${(indicatorSummary.neutral / 10) * 100}%`, background: "var(--neutral)" }} />
+                 <div style={{ width: `${(indicatorSummary.bullish / 10) * 100}%`, background: "var(--bullish)" }} />
+              </div>
             </div>
+
+            {strongestSignals.length > 0 && (
+              <div style={{ marginBottom: "24px", background: "rgba(47, 111, 101, 0.05)", border: "1px solid rgba(47, 111, 101, 0.2)", borderRadius: "12px", padding: "16px" }}>
+                 <p className="card-label" style={{ color: "var(--bullish)" }}>Strongest Driving Signals</p>
+                 <div style={{ display: "flex", gap: "16px", marginTop: "12px", flexWrap: "wrap" }}>
+                    {strongestSignals.map(([k, ind]) => (
+                       <div key={k} style={{ flex: 1, minWidth: "180px", padding: "12px", borderRadius: "8px", background: "var(--card-bg)", border: "1px solid var(--border)" }}>
+                          <strong>{INDICATOR_META[k]?.title || k}</strong>
+                          <span style={{ display: "block", color: ind.signal.includes("BUY") ? "var(--bullish)" : ind.signal.includes("SELL") ? "var(--bearish)" : "var(--neutral)", fontSize: "0.9rem", fontWeight: "bold", marginTop: "4px" }}>{ind.signal}</span>
+                          <p style={{ fontSize: "0.85rem", margin: "4px 0 0 0", color: "#666" }}>{summarizeIndicator(k, ind)}</p>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+            )}
 
              <div style={{ marginBottom: 24, padding: "16px 20px", borderRadius: 16, background: "rgba(255, 250, 240, 0.9)", border: "1px solid rgba(122, 90, 41, 0.15)" }}>
               <p className="card-label">Technical Scoring Engine</p>
@@ -1012,6 +1058,22 @@ function App() {
                   <strong>Retrying backend feed</strong>
                 </article>
               )}
+            </div>
+          </section>
+
+          <section className="news-panel" style={{ marginTop: "32px", marginBottom: "32px" }}>
+            <div className="section-heading">
+              <h3>Latest Market Drivers</h3>
+              <p>Recent news headlines processed for sentiment.</p>
+            </div>
+            <div className="history-list">
+              {newsArticles.slice(0, 3).map((article, i) => (
+                <article className="history-row" key={i} style={{ flexDirection: "column", alignItems: "flex-start", gap: "6px", padding: "16px" }}>
+                  <strong style={{ fontSize: "1rem", lineHeight: "1.3" }}>{article.title}</strong>
+                  {article.description && <span style={{ fontSize: "0.85rem", color: "#666", lineHeight: "1.4" }}>{article.description.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ')}</span>}
+                </article>
+              ))}
+              {newsArticles.length === 0 && <article className="history-row">No latest news available.</article>}
             </div>
           </section>
         </>
