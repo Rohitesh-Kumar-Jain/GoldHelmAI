@@ -750,24 +750,26 @@ function App() {
   }, [technicalIndicators]);
 
   return (
-    <main className="app-shell" style={{ paddingTop: 0 }}>
+    <>
       {/* Product Navigation Header */}
       <header style={{ 
         display: "flex", 
         alignItems: "center", 
-        padding: "16px 24px", 
-        background: "var(--card-bg)", 
-        borderBottom: "1px solid var(--border)",
+        padding: "16px 32px", 
+        background: "rgba(251, 248, 241, 0.85)", 
+        backdropFilter: "blur(16px)",
+        borderBottom: "1px solid rgba(122, 90, 41, 0.15)",
         position: "sticky",
         top: 0,
         zIndex: 100
       }}>
-        <img src="/goldhelm-logo.png" alt="GoldHelm AI" style={{ height: "32px", width: "auto", marginRight: "12px", borderRadius: "8px" }} />
+        <img src="/goldhelm-logo.png" alt="GoldHelm AI" style={{ height: "28px", width: "auto", marginRight: "12px", borderRadius: "6px" }} />
         <span style={{ fontSize: "1.1rem", fontWeight: "700", letterSpacing: "-0.3px", color: "var(--text)" }}>GoldHelm AI</span>
       </header>
 
-      <section className="hero" style={{ paddingTop: "40px" }}>
-        <div className="hero-brand" style={{ display: "block" }}>
+      <main className="app-shell" style={{ paddingTop: "24px" }}>
+        <section className="hero" style={{ paddingTop: "12px", paddingBottom: "32px" }}>
+          <div className="hero-brand" style={{ display: "block" }}>
           <div className="hero-copy">
             <p className="eyebrow">Quantitative Dashboard</p>
             <h1>Gold intelligence with explainable next-day forecasts.</h1>
@@ -810,7 +812,7 @@ function App() {
           <section className="cards cards-wide" style={{ marginTop: 0 }}>
             <article className="card primary-card">
               <p className="card-label">Current Close</p>
-              <h2>{formatCurrency(dashboard.price?.price)}</h2>
+              <h2 style={{ fontSize: "clamp(1.4rem, 2vw, 1.8rem)", whiteSpace: "nowrap", letterSpacing: "-0.5px" }}>{formatCurrency(dashboard.price?.price)}</h2>
               <p className="card-meta">
                 {dashboard.price?.ticker} as of {dashboard.price?.date}
               </p>
@@ -818,7 +820,7 @@ function App() {
 
             <article className="card">
               <p className="card-label">Next-Day Forecast</p>
-              <h2>{formatCurrency(dashboard.prediction?.prediction)}</h2>
+              <h2 style={{ fontSize: "clamp(1.4rem, 2vw, 1.8rem)", whiteSpace: "nowrap", letterSpacing: "-0.5px" }}>{formatCurrency(dashboard.prediction?.prediction)}</h2>
               <p className="card-meta">
                 Current: {formatCurrency(dashboard.prediction?.current_price || dashboard.price?.price)}
               </p>
@@ -827,14 +829,14 @@ function App() {
 
             <article className="card">
               <p className="card-label">Model Quality</p>
-              <h2>{formatPercent((dashboard.prediction?.confidence ?? NaN) * 100)}</h2>
+              <h2 style={{ fontSize: "clamp(1.4rem, 2vw, 1.8rem)", whiteSpace: "nowrap", letterSpacing: "-0.5px" }}>{formatPercent((dashboard.prediction?.confidence ?? NaN) * 100)}</h2>
               <p className="card-meta">Validation MAE: {formatCurrency(dashboard.prediction?.validation_mae)}</p>
               <p className="card-meta">Risk: {(dashboard.prediction?.risk_level || "low").toUpperCase()}</p>
             </article>
 
             <article className="card">
               <p className="card-label">Market Sentiment</p>
-              <h2 className="sentiment-label">{dashboard.sentiment?.label || dashboard.prediction?.sentiment?.label || "Neutral"}</h2>
+              <h2 className="sentiment-label" style={{ fontSize: "clamp(1.4rem, 2vw, 1.8rem)", whiteSpace: "nowrap", letterSpacing: "-0.5px" }}>{dashboard.sentiment?.label || dashboard.prediction?.sentiment?.label || "Neutral"}</h2>
               <p className="card-meta">
                 Score:{" "}
                 {typeof (dashboard.sentiment?.score ?? dashboard.prediction?.sentiment?.score) === "number"
@@ -847,19 +849,13 @@ function App() {
               <p className="card-label">Technical Signal</p>
               <h2 className="decision-label" style={{ 
                 color: indicatorScore.signal.includes("BUY") ? "var(--bullish)" : 
-                       indicatorScore.signal.includes("SELL") ? "var(--bearish)" : "var(--neutral)" 
+                       indicatorScore.signal.includes("SELL") ? "var(--bearish)" : "var(--neutral)",
+                fontSize: "clamp(1.4rem, 2vw, 1.8rem)", whiteSpace: "nowrap", letterSpacing: "-0.5px"
               }}>
                 {indicatorScore.signal}
               </h2>
               <p className="card-meta">Combined score: {formatNumber(indicatorScore.score)}</p>
               <p className="card-meta">Confidence: {formatPercent(indicatorScore.confidence * 100)}</p>
-            </article>
-
-            <article className="card decision-card">
-              <p className="card-label">Final Decision</p>
-              <h2 className="decision-label">{dashboard.prediction?.decision || "HOLD"}</h2>
-              <p className="card-meta">Combined confidence: {formatPercent((dashboard.prediction?.confidence ?? NaN) * 100)}</p>
-              <p className="card-meta">RL suggestion: {dashboard.prediction?.rl_decision || "Unavailable"}</p>
             </article>
           </section>
 
@@ -879,6 +875,34 @@ function App() {
               ) : (
                 <article className="explanation-row">Final analysis will appear when the prediction endpoint provides it.</article>
               )}
+            </div>
+          </section>
+
+          <section className="debate-panel">
+            <div className="section-heading">
+              <h3>Agent Debate</h3>
+              <p>Reasoning agent and RL policy compared before the final decision is set.</p>
+            </div>
+
+            <div className="debate-grid">
+              <article className="debate-card">
+                <p className="card-label">Reasoning Agent</p>
+                <h4>{dashboard.prediction?.debate?.reasoning_agent?.decision || "N/A"}</h4>
+                <p className="card-meta">Confidence: {formatPercent((dashboard.prediction?.debate?.reasoning_agent?.confidence ?? NaN) * 100)}</p>
+              </article>
+
+              <article className="debate-card">
+                <p className="card-label">RL Agent</p>
+                <h4>{dashboard.prediction?.debate?.rl_agent?.decision || "N/A"}</h4>
+                <p className="card-meta">Confidence: {formatPercent((dashboard.prediction?.debate?.rl_agent?.confidence ?? NaN) * 100)}</p>
+                <p className="card-meta">Policy: {dashboard.prediction?.debate?.policy_source || "Unavailable"}</p>
+              </article>
+
+              <article className="debate-card">
+                <p className="card-label">Agreement</p>
+                <h4>{dashboard.prediction?.debate?.agreement ? "Aligned" : "Mixed"}</h4>
+                <p className="card-meta">Coordinator resolves disagreements by defaulting to caution.</p>
+              </article>
             </div>
           </section>
 
@@ -926,7 +950,7 @@ function App() {
                    <div style={{ position: "absolute", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.7)", left: "80%" }} title="Buy / Strong Buy" />
                    
                    {/* Indicator Thumb */}
-                   <div style={{ position: "absolute", top: -6, bottom: -6, width: 4, background: "#333", borderRadius: 2, left: `${Math.max(0, Math.min(100, (indicatorScore.score + 100) / 2))}%`, transition: "left 0.4s ease-out" }} />
+                   <div style={{ position: "absolute", top: -8, bottom: -8, width: 8, background: "#fff", border: "2px solid #333", borderRadius: 4, left: `calc(${Math.max(0, Math.min(100, (indicatorScore.score + 100) / 2))}% - 4px)`, transition: "left 0.4s ease-out", zIndex: 10, boxShadow: "0 2px 4px rgba(0,0,0,0.2)" }} />
                 </div>
                 <strong style={{ fontSize: "1.2rem", color: indicatorScore.signal.includes("BUY") ? "var(--bullish)" : indicatorScore.signal.includes("SELL") ? "var(--bearish)" : "var(--neutral)", minWidth: "180px", textAlign: "right" }}>
                    {indicatorScore.signal} ({formatNumber(indicatorScore.score)})
@@ -987,34 +1011,6 @@ function App() {
                   </article>
                 );
               })}
-            </div>
-          </section>
-
-          <section className="debate-panel">
-            <div className="section-heading">
-              <h3>Agent Debate</h3>
-              <p>Reasoning agent and RL policy compared before the final decision is set.</p>
-            </div>
-
-            <div className="debate-grid">
-              <article className="debate-card">
-                <p className="card-label">Reasoning Agent</p>
-                <h4>{dashboard.prediction?.debate?.reasoning_agent?.decision || "N/A"}</h4>
-                <p className="card-meta">Confidence: {formatPercent((dashboard.prediction?.debate?.reasoning_agent?.confidence ?? NaN) * 100)}</p>
-              </article>
-
-              <article className="debate-card">
-                <p className="card-label">RL Agent</p>
-                <h4>{dashboard.prediction?.debate?.rl_agent?.decision || "N/A"}</h4>
-                <p className="card-meta">Confidence: {formatPercent((dashboard.prediction?.debate?.rl_agent?.confidence ?? NaN) * 100)}</p>
-                <p className="card-meta">Policy: {dashboard.prediction?.debate?.policy_source || "Unavailable"}</p>
-              </article>
-
-              <article className="debate-card">
-                <p className="card-label">Agreement</p>
-                <h4>{dashboard.prediction?.debate?.agreement ? "Aligned" : "Mixed"}</h4>
-                <p className="card-meta">Coordinator resolves disagreements by defaulting to caution.</p>
-              </article>
             </div>
           </section>
 
@@ -1081,18 +1077,23 @@ function App() {
               <p>Recent news headlines processed for sentiment.</p>
             </div>
             <div className="history-list">
-              {newsArticles.slice(0, 3).map((article, i) => (
-                <article className="history-row" key={i} style={{ flexDirection: "column", alignItems: "flex-start", gap: "6px", padding: "16px" }}>
-                  <strong style={{ fontSize: "1rem", lineHeight: "1.3" }}>{article.title}</strong>
-                  {article.description && <span style={{ fontSize: "0.85rem", color: "#666", lineHeight: "1.4" }}>{article.description.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ')}</span>}
-                </article>
-              ))}
+              {newsArticles.slice(0, 3).map((article, i) => {
+                const cleanedDescription = article.description ? article.description.replace(/<[^>]*>?/gm, '').replace(/&nbsp;/g, ' ').trim() : "";
+                const isRedundant = cleanedDescription.includes(article.title) || article.title.includes(cleanedDescription);
+                return (
+                  <article className="history-row" key={i} style={{ flexDirection: "column", alignItems: "flex-start", gap: "6px", padding: "16px" }}>
+                    <strong style={{ fontSize: "1rem", lineHeight: "1.3" }}>{article.title}</strong>
+                    {!isRedundant && cleanedDescription && <span style={{ fontSize: "0.85rem", color: "#666", lineHeight: "1.4" }}>{cleanedDescription}</span>}
+                  </article>
+                );
+              })}
               {newsArticles.length === 0 && <article className="history-row">No latest news available.</article>}
             </div>
           </section>
         </>
       )}
     </main>
+    </>
   );
 }
 
