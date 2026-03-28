@@ -372,8 +372,8 @@ function IndicatorChart({ chart, indicatorKey }) {
 
   const visibleSeries = useMemo(() => seriesWithProps.filter(line => !hiddenSeries.has(line.label)), [seriesWithProps, hiddenSeries]);
 
-  const primarySeries = visibleSeries.find((line) => (line.points ?? []).length > 0);
-  const totalPoints = primarySeries?.points?.length ?? 0;
+  const timeSeries = seriesWithProps.find((line) => (line.points ?? []).length > 0);
+  const totalPoints = timeSeries?.points?.length ?? 0;
 
   const { mainBounds, secBounds, volBounds, isPriceChart } = useMemo(() => {
     const isPrice = ["moving_averages", "bollinger_bands", "fibonacci"].includes(indicatorKey);
@@ -396,14 +396,14 @@ function IndicatorChart({ chart, indicatorKey }) {
 
   const { minValue, maxValue, range } = mainBounds;
   const tooltip = hoverX === null ? null : getNearestTooltipData(visibleSeries, hoverX, width, padding);
-  const startDate = primarySeries?.points?.[0]?.date ?? "";
-  const endDate = primarySeries?.points?.[totalPoints - 1]?.date ?? "";
-  const midDate = primarySeries?.points?.[Math.floor(totalPoints / 2)]?.date ?? "";
+  const startDate = timeSeries?.points?.[0]?.date ?? "";
+  const endDate = timeSeries?.points?.[totalPoints - 1]?.date ?? "";
+  const midDate = timeSeries?.points?.[Math.floor(totalPoints / 2)]?.date ?? "";
   const zeroY =
     minValue <= 0 && maxValue >= 0
       ? getYPosition(0, minValue, range, height, padding)
       : null;
-  const hasData = visibleSeries.some((line) => (line.points ?? []).length > 1);
+  const hasData = seriesWithProps.some((line) => (line.points ?? []).length > 1);
   const referenceLines = getReferenceLines(indicatorKey, minValue, maxValue);
 
   if (!hasData) {
