@@ -527,19 +527,32 @@ class IndicatorService:
             highs = window.get("high", window["close"]).tolist()
             lows = window.get("low", window["close"]).tolist()
             closes = window["close"].tolist()
+            
+            # Candles series
             points = []
             for d, o, h, l, c in zip(dates, opens, highs, lows, closes, strict=False):
                 if pd.isna(c):
                     continue
                 points.append({
-                    "date": str(d), 
-                    "value": round(float(c), decimals),
-                    "open": round(float(o), decimals),
-                    "high": round(float(h), decimals),
-                    "low": round(float(l), decimals),
-                    "close": round(float(c), decimals)
+                    "date": str(d),
+                    "open": float(o) if not pd.isna(o) else float(c),
+                    "high": float(h) if not pd.isna(h) else float(c),
+                    "low": float(l) if not pd.isna(l) else float(c),
+                    "close": float(c),
+                    "value": float(c),
                 })
             chart_series.append({"label": "Candles", "points": points})
+            
+            # Close price line
+            close_points = []
+            for d, c in zip(dates, closes, strict=False):
+                if pd.isna(c):
+                    continue
+                close_points.append({
+                    "date": str(d),
+                    "value": round(float(c), decimals)
+                })
+            chart_series.append({"label": "Close", "points": close_points})
 
         for label, values in lines:
             aligned = values.tail(limit).tolist()

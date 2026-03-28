@@ -345,7 +345,7 @@ function IndicatorChart({ chart, indicatorKey }) {
   })), [rawSeries]);
 
   const [hoverX, setHoverX] = useState(null);
-  const [hiddenSeries, setHiddenSeries] = useState(new Set());
+  const [hiddenSeries, setHiddenSeries] = useState(new Set(["Close"]));
 
   const toggleSeries = (label) => {
     setHiddenSeries(prev => {
