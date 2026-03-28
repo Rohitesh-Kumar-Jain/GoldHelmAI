@@ -70,10 +70,16 @@ function App() {
   const [dashboard, setDashboard] = useState({
     price: null,
     prediction: null,
+    sentiment: null,
     history: [],
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const hasDashboardData =
+    dashboard.price !== null ||
+    dashboard.sentiment !== null ||
+    dashboard.prediction !== null ||
+    dashboard.history.length > 0;
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -83,9 +89,10 @@ function App() {
         setLoading(true);
         setError("");
 
-        const [priceResult, predictionResult, historyResult] = await Promise.allSettled([
+        const [priceResult, predictionResult, sentimentResult, historyResult] = await Promise.allSettled([
           fetchJson("/api/price", abortController.signal),
           fetchJson("/api/predict", abortController.signal),
+          fetchJson("/api/sentiment", abortController.signal),
           fetchJson("/api/history", abortController.signal),
         ]);
 
@@ -93,12 +100,27 @@ function App() {
           priceResult.status === "fulfilled" ? priceResult.value : null;
         const prediction =
           predictionResult.status === "fulfilled" ? predictionResult.value : null;
+        const sentiment =
+          sentimentResult.status === "fulfilled" ? sentimentResult.value : null;
         const historyResponse =
           historyResult.status === "fulfilled" ? historyResult.value : null;
+
+        const wasAborted =
+          abortController.signal.aborted ||
+          [priceResult, predictionResult, sentimentResult, historyResult].some(
+            (result) =>
+              result.status === "rejected" &&
+              result.reason?.name === "AbortError",
+          );
+
+        if (wasAborted) {
+          return;
+        }
 
         if (
           priceResult.status === "rejected" &&
           predictionResult.status === "rejected" &&
+          sentimentResult.status === "rejected" &&
           historyResult.status === "rejected"
         ) {
           throw new Error("Backend request failed.");
@@ -107,10 +129,11 @@ function App() {
         setDashboard({
           price: price ?? null,
           prediction: prediction ?? null,
+          sentiment: sentiment ?? prediction?.sentiment ?? null,
           history: normalizeHistory(historyResponse),
         });
       } catch (err) {
-        if (err.name !== "AbortError") {
+        if (err.name !== "AbortError" && !abortController.signal.aborted) {
           setError(err.message || "Unable to load GoldHelm AI market data.");
         }
       } finally {
@@ -147,7 +170,7 @@ function App() {
       {loading && <p className="status">Loading market data...</p>}
       {error && <p className="error">{error}</p>}
 
-      {!loading && !error && (
+      {!loading && hasDashboardData && (
         <>
           <section className="cards">
             <article className="card primary-card">
@@ -173,6 +196,41 @@ function App() {
                 Validation MAE: {formatCurrency(dashboard.prediction?.validation_mae)}
               </p>
             </article>
+
+            <article className="card">
+              <p className="card-label">Market Sentiment</p>
+              <h2 className="sentiment-label">
+                {dashboard.sentiment?.label || dashboard.prediction?.sentiment?.label || "Neutral"}
+              </h2>
+              <p className="card-meta">
+                Score:{" "}
+                {typeof (dashboard.sentiment?.score ?? dashboard.prediction?.sentiment?.score) ===
+                "number"
+                  ? (dashboard.sentiment?.score ?? dashboard.prediction?.sentiment?.score).toFixed(3)
+                  : "N/A"}
+              </p>
+            </article>
+          </section>
+
+          <section className="insight-panel">
+            <div className="section-heading">
+              <h3>Why the model thinks this</h3>
+              <p>Rule-based explanation generated from sentiment and market features.</p>
+            </div>
+
+            <div className="explanation-list">
+              {(dashboard.prediction?.explanation ?? []).length > 0 ? (
+                dashboard.prediction.explanation.map((reason) => (
+                  <article className="explanation-row" key={reason}>
+                    {reason}
+                  </article>
+                ))
+              ) : (
+                <article className="explanation-row">
+                  Explanation will appear when the prediction endpoint provides one.
+                </article>
+              )}
+            </div>
           </section>
 
           <section className="history-panel">
@@ -182,12 +240,19 @@ function App() {
             </div>
 
             <div className="history-list">
-              {dashboard.history.map((item) => (
-                <article className="history-row" key={item.date}>
-                  <span>{item.date}</span>
-                  <strong>{formatCurrency(item.close)}</strong>
+              {dashboard.history.length > 0 ? (
+                dashboard.history.map((item) => (
+                  <article className="history-row" key={item.date}>
+                    <span>{item.date}</span>
+                    <strong>{formatCurrency(item.close)}</strong>
+                  </article>
+                ))
+              ) : (
+                <article className="history-row">
+                  <span>History unavailable</span>
+                  <strong>Retrying backend feed</strong>
                 </article>
-              ))}
+              )}
             </div>
           </section>
         </>

@@ -116,13 +116,14 @@ body {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
   margin-top: 22px;
 }
 
 .card,
-.history-panel {
+.history-panel,
+.insight-panel {
   border: 1px solid var(--border);
   border-radius: 24px;
   background: var(--panel);
@@ -150,7 +151,12 @@ body {
   line-height: 1.5;
 }
 
-.history-panel {
+.sentiment-label {
+  text-transform: capitalize;
+}
+
+.history-panel,
+.insight-panel {
   margin-top: 22px;
   padding: 24px;
 }
@@ -177,7 +183,8 @@ body {
   gap: 12px;
 }
 
-.history-row {
+.history-row,
+.explanation-row {
   display: flex;
   justify-content: space-between;
   gap: 16px;
@@ -185,6 +192,16 @@ body {
   border-radius: 18px;
   background: rgba(255, 250, 240, 0.8);
   border: 1px solid rgba(122, 90, 41, 0.1);
+}
+
+.explanation-list {
+  display: grid;
+  gap: 12px;
+}
+
+.explanation-row {
+  justify-content: flex-start;
+  line-height: 1.6;
 }
 
 .status,
@@ -234,7 +251,8 @@ body {
 
   .hero,
   .card,
-  .history-panel {
+  .history-panel,
+  .insight-panel {
     border-radius: 20px;
   }
 

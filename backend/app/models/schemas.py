@@ -21,6 +21,25 @@ class HistoryResponse(BaseModel):
     history: list[HistoryItem]
 
 
+class NewsItem(BaseModel):
+    title: str
+    description: str
+    published_at: str
+
+
+class SentimentPayload(BaseModel):
+    score: float
+    label: str
+
+
+class SentimentResponse(BaseModel):
+    score: float
+    label: str
+    article_count: int
+    articles: list[NewsItem]
+    updated_at: str
+
+
 class PredictResponse(BaseModel):
     ticker: str
     as_of: date
@@ -29,3 +48,5 @@ class PredictResponse(BaseModel):
     confidence: float
     model: str
     validation_mae: float
+    sentiment: SentimentPayload
+    explanation: list[str]
