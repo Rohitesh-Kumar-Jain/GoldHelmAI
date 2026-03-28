@@ -499,6 +499,16 @@ body {
   margin: 18px 0 4px;
 }
 
+.group-signal-card .chip-label {
+  display: inline-block;
+  margin: 0 8px 6px 0;
+}
+
+.group-signal-card strong {
+  display: inline-block;
+  margin-bottom: 6px;
+}
+
 .subdued-panel {
   opacity: 0.94;
 }
