@@ -137,7 +137,7 @@ class IndicatorService:
             },
             "chart": self._multi_line_chart(
                 frame,
-                [("MACD", macd), ("Signal", signal_line)],
+                [("MACD", macd), ("Signal", signal_line), ("Histogram", histogram)],
                 decimals=4,
             ),
         }

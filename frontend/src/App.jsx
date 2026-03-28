@@ -224,22 +224,17 @@ function explainIndicator(indicatorKey, payload) {
   }
 }
 
-function buildPath(points, width, height, padding) {
+function buildPath(points, width, height, padding, globalMin, globalRange) {
   if (points.length < 2) {
     return "";
   }
 
-  const values = points.map((point) => point.value);
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
-  const range = maxValue - minValue || 1;
   const usableWidth = width - padding * 2;
-  const usableHeight = height - padding * 2;
 
   return points
     .map((point, index) => {
       const x = padding + (index / (points.length - 1)) * usableWidth;
-      const y = height - padding - ((point.value - minValue) / range) * usableHeight;
+      const y = getYPosition(point.value, globalMin, globalRange, height, padding);
       return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
@@ -291,9 +286,10 @@ function getNearestTooltipData(series, hoverX, width, padding) {
 
   const date = primarySeries.points?.[nearestIndex]?.date ?? "";
   const entries = series
-    .map((line) => ({
+    .map((line, idx) => ({
       label: line.label,
       point: line.points?.[nearestIndex] ?? null,
+      colorIndex: idx,
     }))
     .filter((entry) => entry.point !== null);
 
@@ -392,20 +388,28 @@ function IndicatorChart({ chart, indicatorKey }) {
           );
         })}
         {series.map((line, index) => {
-          const path = buildPath(line.points ?? [], width, height, padding);
+          const path = buildPath(line.points ?? [], width, height, padding, minValue, range);
           if (!path) {
             return null;
           }
+
+          const isClose = line.label === "Close";
+          const strokeColor = isClose ? "#333333" : CHART_COLORS[index % CHART_COLORS.length];
+          const strokeWidth = isClose ? "2" : "3";
+          const strokeOpacity = isClose ? 0.8 : 1;
+          const strokeDash = isClose ? "4 4" : "none";
 
           return (
             <path
               key={line.label}
               d={path}
               fill="none"
-              stroke={CHART_COLORS[index % CHART_COLORS.length]}
-              strokeWidth="3"
+              stroke={strokeColor}
+              strokeWidth={strokeWidth}
               strokeLinecap="round"
               strokeLinejoin="round"
+              strokeDasharray={strokeDash}
+              opacity={strokeOpacity}
             />
           );
         })}
@@ -418,13 +422,13 @@ function IndicatorChart({ chart, indicatorKey }) {
               y2={height - padding}
               className="chart-cursor"
             />
-            {tooltip.entries.map((entry, index) => (
+            {tooltip.entries.map((entry) => (
               <circle
                 key={`${entry.label}-${entry.point.date}`}
                 cx={getXPosition(tooltip.index, totalPoints, width, padding)}
                 cy={getYPosition(entry.point.value, minValue, range, height, padding)}
                 r="3.5"
-                fill={CHART_COLORS[index % CHART_COLORS.length]}
+                fill={entry.label === "Close" ? "#333333" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length]}
                 className="chart-point"
               />
             ))}
@@ -447,11 +451,11 @@ function IndicatorChart({ chart, indicatorKey }) {
       {tooltip && (
         <div className="chart-tooltip">
           <strong>{formatDateLabel(tooltip.date)}</strong>
-          {tooltip.entries.map((entry, index) => (
+          {tooltip.entries.map((entry) => (
             <span className="tooltip-row" key={`${entry.label}-${entry.point.date}`}>
               <span
                 className="legend-dot"
-                style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                style={{ backgroundColor: entry.label === "Close" ? "#333333" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length] }}
               />
               {entry.label}: {formatNumber(entry.point.value, Math.abs(entry.point.value) < 10 ? 4 : 2)}
             </span>
@@ -462,7 +466,7 @@ function IndicatorChart({ chart, indicatorKey }) {
       <div className="chart-legend">
         {series.map((line, index) => (
           <span className="legend-item" key={line.label}>
-            <span className="legend-dot" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+            <span className="legend-dot" style={{ backgroundColor: line.label === "Close" ? "#333333" : CHART_COLORS[index % CHART_COLORS.length] }} />
             {line.label}
           </span>
         ))}
