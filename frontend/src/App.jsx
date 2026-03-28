@@ -786,7 +786,7 @@ function App() {
 
       {!loading && hasDashboardData && (
         <>
-          <section className="summary-bar" style={{ display: "flex", gap: "16px", background: "var(--card-bg)", padding: "16px", borderRadius: "12px", border: "1px solid var(--border)", margin: "0 24px 24px 24px", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", boxShadow: "0 4px 12px rgba(0,0,0,0.05)" }}>
+          <section className="summary-bar" style={{ display: "flex", gap: "16px", background: "rgba(255, 250, 240, 0.82)", padding: "16px 24px", borderRadius: "18px", border: "1px solid var(--border)", margin: "24px 0 32px 0", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", boxShadow: "0 12px 24px rgba(77, 51, 18, 0.04)" }}>
              <div style={{ display: "flex", flexDirection: "column" }}>
                 <span className="card-label">Expected Move</span>
                 <strong style={{ fontSize: "1.1rem" }}>{dashboard.prediction?.predicted_change_pct?.toFixed(3)}%</strong>
@@ -912,7 +912,7 @@ function App() {
               <p>Ten charted indicators computed from the latest OHLCV history in the backend.</p>
             </div>
 
-            <div style={{ marginBottom: "24px", background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: "12px", padding: "16px" }}>
+            <div style={{ marginBottom: "24px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "12px", padding: "16px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
                  <strong style={{ fontSize: "0.95rem" }}>Technical Consensus Breakdown</strong>
                  <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>{indicatorSummary.bullish} Bullish &nbsp;•&nbsp; {indicatorSummary.neutral} Neutral &nbsp;•&nbsp; {indicatorSummary.bearish} Bearish</span>
@@ -929,7 +929,7 @@ function App() {
                  <p className="card-label" style={{ color: "var(--bullish)" }}>Strongest Driving Signals</p>
                  <div style={{ display: "flex", gap: "16px", marginTop: "12px", flexWrap: "wrap" }}>
                     {strongestSignals.map(([k, ind]) => (
-                       <div key={k} style={{ flex: 1, minWidth: "180px", padding: "12px", borderRadius: "8px", background: "var(--card-bg)", border: "1px solid var(--border)" }}>
+                       <div key={k} style={{ flex: 1, minWidth: "180px", padding: "12px", borderRadius: "8px", background: "var(--panel)", border: "1px solid var(--border)" }}>
                           <strong>{INDICATOR_META[k]?.title || k}</strong>
                           <span style={{ display: "block", color: ind.signal.includes("BUY") ? "var(--bullish)" : ind.signal.includes("SELL") ? "var(--bearish)" : "var(--neutral)", fontSize: "0.9rem", fontWeight: "bold", marginTop: "4px" }}>{ind.signal}</span>
                           <p style={{ fontSize: "0.85rem", margin: "4px 0 0 0", color: "#666" }}>{summarizeIndicator(k, ind)}</p>
