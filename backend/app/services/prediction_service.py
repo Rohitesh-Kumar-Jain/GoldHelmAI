@@ -108,17 +108,38 @@ class PredictionService:
         final_decision = self._finalize_decision(
             reasoning_decision=str(reasoning["decision"]),
             rl_decision=str(rl_result["rl_decision"]),
+            reasoning_confidence=float(reasoning["confidence"]),
+            rl_confidence=float(rl_result["rl_confidence"]),
         )
+        agreement = reasoning["decision"] == rl_result["rl_decision"]
         final_analysis = self._finalize_analysis(
-            reasoning_analysis=list(reasoning["analysis"]),
+            predicted_change_pct=predicted_return * 100,
+            sentiment_label=sentiment["label"],
+            reasoning_decision=str(reasoning["decision"]),
             final_decision=final_decision,
             rl_decision=str(rl_result["rl_decision"]),
+            agreement=agreement,
             policy_source=str(rl_result["policy_source"]),
         )
         final_confidence = self._merge_confidence(
             reasoning_confidence=float(reasoning["confidence"]),
             rl_confidence=float(rl_result["rl_confidence"]),
-            aligned=final_decision == reasoning["decision"] == rl_result["rl_decision"],
+            aligned=agreement and final_decision == reasoning["decision"],
+        )
+        risk_level = self._risk_level(
+            volatility=float(latest_row["volatility"]),
+            disagreement=not agreement,
+        )
+
+        logger.info(
+            "Prediction generated: current=%s prediction=%s sentiment=%s reasoning=%s rl=%s final=%s risk=%s",
+            round(last_close, 2),
+            round(prediction, 2),
+            sentiment["label"],
+            reasoning["decision"],
+            rl_result["rl_decision"],
+            final_decision,
+            risk_level,
         )
 
         return {
@@ -132,6 +153,7 @@ class PredictionService:
             "confidence": round(final_confidence, 4),
             "model": "random_forest_next_day_return",
             "validation_mae": round(artifacts.validation_mae, 2),
+            "risk_level": risk_level,
             "sentiment": {
                 "score": round(float(sentiment["sentiment_score"]), 4),
                 "label": sentiment["label"],
@@ -150,7 +172,6 @@ class PredictionService:
             },
             "backtest": rl_result["backtest"],
             "final_analysis": final_analysis,
-            "analysis": reasoning["analysis"],
         }
 
     def get_latest_sentiment(self) -> dict[str, Any]:
@@ -225,9 +246,24 @@ class PredictionService:
         return max(0.55, confidence)
 
     @staticmethod
-    def _finalize_decision(reasoning_decision: str, rl_decision: str) -> str:
+    def _finalize_decision(
+        reasoning_decision: str,
+        rl_decision: str,
+        reasoning_confidence: float,
+        rl_confidence: float,
+    ) -> str:
         if reasoning_decision == rl_decision:
             return reasoning_decision
+
+        if rl_confidence > 0.9:
+            return rl_decision
+
+        if reasoning_confidence >= 0.85 and rl_confidence <= 0.65:
+            return reasoning_decision
+
+        if reasoning_confidence < 0.75 and rl_confidence < 0.75:
+            return "HOLD"
+
         return "HOLD"
 
     @staticmethod
@@ -236,22 +272,42 @@ class PredictionService:
         if aligned:
             base += 0.04
         else:
-            base -= 0.06
+            base *= 0.6
         return max(0.5, min(base, 0.97))
 
     @staticmethod
     def _finalize_analysis(
-        reasoning_analysis: list[str],
+        predicted_change_pct: float,
+        sentiment_label: str,
+        reasoning_decision: str,
         final_decision: str,
         rl_decision: str,
+        agreement: bool,
         policy_source: str,
     ) -> list[str]:
-        analysis = list(reasoning_analysis)
-        analysis.append(f"RL policy suggests {rl_decision} using the {policy_source} policy.")
-        if final_decision == "HOLD" and rl_decision != "HOLD":
-            analysis.append("Final decision is HOLD because the reasoning and RL layers disagree.")
-        elif final_decision != "HOLD":
-            analysis.append(f"Final decision is {final_decision} because both decision layers align.")
+        direction = "upward" if predicted_change_pct >= 0 else "downward"
+        analysis = [
+            f"ML model predicts {predicted_change_pct:.2f}% {direction} movement.",
+            f"Sentiment is {sentiment_label}, providing {'support' if sentiment_label != 'neutral' else 'weak confirmation'}.",
+        ]
+
+        if agreement:
+            analysis.append(f"Reasoning and RL agents agree on {final_decision}.")
         else:
-            analysis.append("Final decision is HOLD because both layers remain cautious.")
+            analysis.append(
+                f"RL agent suggests {rl_decision}, indicating a possible short-term reversal versus the {reasoning_decision} reasoning view."
+            )
+            analysis.append("Final decision is HOLD due to conflicting signals.")
+
+        if final_decision != "HOLD" and agreement:
+            analysis.append(f"Final decision is {final_decision} because both signals align.")
+
         return analysis
+
+    @staticmethod
+    def _risk_level(volatility: float, disagreement: bool) -> str:
+        if disagreement or volatility >= 0.03:
+            return "high"
+        if volatility >= 0.015:
+            return "medium"
+        return "low"

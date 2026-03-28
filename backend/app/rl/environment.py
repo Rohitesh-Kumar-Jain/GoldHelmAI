@@ -83,6 +83,8 @@ class TradingEnvironment:
         state = self.reset()
         done = False
         last_value = self.initial_cash
+        portfolio_history = [self.initial_cash]
+        step_returns: list[float] = []
 
         while not done:
             action = int(policy_fn(state))
@@ -90,14 +92,21 @@ class TradingEnvironment:
             state = step_result.next_state
             done = step_result.done
             last_value = step_result.info["portfolio_value"]
+            portfolio_history.append(last_value)
+            previous_value = portfolio_history[-2]
+            step_returns.append((last_value - previous_value) / max(previous_value, 1e-9))
 
         total_return = (last_value - self.initial_cash) / self.initial_cash
         win_rate = self.win_count / self.trade_count if self.trade_count else 0.0
+        sharpe_ratio = self._sharpe_ratio(step_returns)
+        max_drawdown = self._max_drawdown(portfolio_history)
         return {
             "total_return": round(float(total_return), 4),
             "number_of_trades": float(self.trade_count),
             "win_rate": round(float(win_rate), 4),
             "final_portfolio_value": round(float(last_value), 2),
+            "sharpe_ratio": round(float(sharpe_ratio), 4),
+            "max_drawdown": round(float(max_drawdown), 4),
         }
 
     def _get_state(self, step: int) -> np.ndarray:
@@ -113,3 +122,24 @@ class TradingEnvironment:
 
     def _portfolio_value(self, price: float) -> float:
         return float(self.cash + self.holdings * price)
+
+    @staticmethod
+    def _sharpe_ratio(step_returns: list[float]) -> float:
+        if len(step_returns) < 2:
+            return 0.0
+
+        returns = np.array(step_returns, dtype=float)
+        volatility = float(np.std(returns))
+        if volatility == 0:
+            return 0.0
+        return float(np.mean(returns) / volatility * np.sqrt(len(returns)))
+
+    @staticmethod
+    def _max_drawdown(portfolio_history: list[float]) -> float:
+        if not portfolio_history:
+            return 0.0
+
+        values = np.array(portfolio_history, dtype=float)
+        running_max = np.maximum.accumulate(values)
+        drawdowns = (values - running_max) / np.maximum(running_max, 1e-9)
+        return abs(float(np.min(drawdowns)))

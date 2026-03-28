@@ -40,7 +40,14 @@ class RLInferenceService:
             "rl_decision": decision,
             "rl_confidence": round(confidence, 4),
             "policy_source": "q_learning",
-            "backtest": metadata,
+            "backtest": {
+                "total_return": float(metadata.get("total_return", 0.0)),
+                "number_of_trades": float(metadata.get("number_of_trades", 0.0)),
+                "win_rate": float(metadata.get("win_rate", 0.0)),
+                "final_portfolio_value": float(metadata.get("final_portfolio_value", 0.0)),
+                "sharpe_ratio": float(metadata.get("sharpe_ratio", 0.0)),
+                "max_drawdown": float(metadata.get("max_drawdown", 0.0)),
+            },
         }
 
     def _load_model(self) -> tuple[QLearningTradingAgent, dict[str, float]] | None:
@@ -72,6 +79,8 @@ class RLInferenceService:
                 "number_of_trades": 0.0,
                 "win_rate": 0.0,
                 "final_portfolio_value": 0.0,
+                "sharpe_ratio": 0.0,
+                "max_drawdown": 0.0,
             },
         }
 

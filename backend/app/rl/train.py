@@ -48,9 +48,15 @@ def train_agent(episodes: int | None = None) -> dict[str, float]:
     settings = get_settings()
     episode_count = episodes or settings.rl_training_episodes
     training_frame = build_training_frame()
-    environment = TradingEnvironment(training_frame, initial_cash=settings.rl_initial_cash)
+    split_index = max(int(len(training_frame) * 0.8), 30)
+    split_index = min(split_index, len(training_frame) - 1)
 
-    states = training_frame[["current_price", "prediction", "sentiment_score"]].to_numpy(dtype=float)
+    train_frame = training_frame.iloc[:split_index].reset_index(drop=True)
+    test_frame = training_frame.iloc[split_index:].reset_index(drop=True)
+
+    environment = TradingEnvironment(train_frame, initial_cash=settings.rl_initial_cash)
+
+    states = train_frame[["current_price", "prediction", "sentiment_score"]].to_numpy(dtype=float)
     agent = QLearningTradingAgent()
     agent.fit_state_bins(states)
 
@@ -65,8 +71,16 @@ def train_agent(episodes: int | None = None) -> dict[str, float]:
             done = result.done
         agent.decay_epsilon()
 
-    metrics = environment.evaluate_policy(lambda state: agent.choose_action(state, explore=False))
+    evaluation_environment = TradingEnvironment(
+        test_frame,
+        initial_cash=settings.rl_initial_cash,
+    )
+    metrics = evaluation_environment.evaluate_policy(
+        lambda state: agent.choose_action(state, explore=False)
+    )
     metrics["episodes"] = float(episode_count)
+    metrics["train_rows"] = float(len(train_frame))
+    metrics["test_rows"] = float(len(test_frame))
     agent.save(settings.rl_model_path, metadata=metrics)
     return metrics
 

@@ -66,13 +66,13 @@ def get_sentiment() -> SentimentResponse:
 @router.get("/predict", response_model=PredictResponse)
 def get_prediction() -> PredictResponse:
     try:
-        prediction = prediction_service.predict_next_day()
-        if prediction is None:
+        prediction_payload = prediction_service.predict_next_day()
+        if prediction_payload is None:
             raise HTTPException(
                 status_code=503,
                 detail="Not enough market history is available to generate a prediction.",
             )
-        return PredictResponse(**prediction)
+        return PredictResponse(**prediction_payload)
     except DataUnavailableError as exc:
         logger.exception("Failed to generate market prediction.")
         raise HTTPException(status_code=503, detail=str(exc)) from exc

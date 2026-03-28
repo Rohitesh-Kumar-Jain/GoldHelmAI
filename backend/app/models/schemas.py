@@ -50,6 +50,8 @@ class BacktestPayload(BaseModel):
     number_of_trades: float
     win_rate: float
     final_portfolio_value: float
+    sharpe_ratio: float
+    max_drawdown: float
 
 
 class DebatePayload(BaseModel):
@@ -70,8 +72,8 @@ class PredictResponse(BaseModel):
     confidence: float
     model: str
     validation_mae: float
+    risk_level: str
     sentiment: SentimentPayload
     debate: DebatePayload
     backtest: BacktestPayload
     final_analysis: list[str]
-    analysis: list[str]
