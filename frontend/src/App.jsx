@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
@@ -566,9 +566,38 @@ function IndicatorChart({ chart, indicatorKey }) {
 
 function IndicatorInfo({ title, blurb, explanation }) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleEvent(event) {
+      if (event.type === "keydown" && event.key === "Escape") {
+        setOpen(false);
+      } else if (
+        event.type !== "keydown" &&
+        containerRef.current &&
+        !containerRef.current.contains(event.target)
+      ) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleEvent);
+    document.addEventListener("touchstart", handleEvent);
+    document.addEventListener("keydown", handleEvent);
+
+    return () => {
+      document.removeEventListener("mousedown", handleEvent);
+      document.removeEventListener("touchstart", handleEvent);
+      document.removeEventListener("keydown", handleEvent);
+    };
+  }, [open]);
 
   return (
-    <div className="indicator-info">
+    <div className="indicator-info" ref={containerRef}>
       <button
         type="button"
         className="info-button"
