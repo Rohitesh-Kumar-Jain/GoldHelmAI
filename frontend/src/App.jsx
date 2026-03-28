@@ -750,12 +750,26 @@ function App() {
   }, [technicalIndicators]);
 
   return (
-    <main className="app-shell">
-      <section className="hero">
-        <div className="hero-brand">
-          <img className="hero-logo" src="/goldhelm-logo.png" alt="GoldHelm AI logo" />
+    <main className="app-shell" style={{ paddingTop: 0 }}>
+      {/* Product Navigation Header */}
+      <header style={{ 
+        display: "flex", 
+        alignItems: "center", 
+        padding: "16px 24px", 
+        background: "var(--card-bg)", 
+        borderBottom: "1px solid var(--border)",
+        position: "sticky",
+        top: 0,
+        zIndex: 100
+      }}>
+        <img src="/goldhelm-logo.png" alt="GoldHelm AI" style={{ height: "32px", width: "auto", marginRight: "12px", borderRadius: "8px" }} />
+        <span style={{ fontSize: "1.1rem", fontWeight: "700", letterSpacing: "-0.3px", color: "var(--text)" }}>GoldHelm AI</span>
+      </header>
+
+      <section className="hero" style={{ paddingTop: "40px" }}>
+        <div className="hero-brand" style={{ display: "block" }}>
           <div className="hero-copy">
-            <p className="eyebrow">GoldHelm AI</p>
+            <p className="eyebrow">Quantitative Dashboard</p>
             <h1>Gold intelligence with explainable next-day forecasts.</h1>
             <p className="hero-text">
               Track the latest futures close, view recent history, inspect the model&apos;s next-session prediction,
