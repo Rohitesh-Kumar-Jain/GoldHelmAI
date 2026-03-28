@@ -13,6 +13,7 @@ from app.rl.inference import RLInferenceService
 from app.services.data_service import DataUnavailableError, GoldDataService
 from app.services.news_service import NewsService
 from app.services.prediction_service import PredictionService
+from app.services.indicator_service import IndicatorService
 from app.services.sentiment_service import SentimentService
 from app.utils.config import get_settings
 
@@ -28,12 +29,14 @@ news_service = NewsService()
 sentiment_service = SentimentService()
 reasoning_agent = ReasoningAgent()
 rl_inference_service = RLInferenceService()
+indicator_service = IndicatorService()
 prediction_service = PredictionService(
     data_service=data_service,
     news_service=news_service,
     sentiment_service=sentiment_service,
     reasoning_agent=reasoning_agent,
     rl_inference_service=rl_inference_service,
+    indicator_service=indicator_service,
 )
 
 
