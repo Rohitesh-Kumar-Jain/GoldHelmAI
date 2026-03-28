@@ -1515,7 +1515,7 @@ function App() {
                 <p>Recent news headlines processed for sentiment.</p>
               </div>
               <div className="history-list">
-                {newsArticles.slice(0, 3).map((article, i) => {
+                {newsArticles.slice(0, 7).map((article, i) => {
                   const cleanedDescription = article.description ? article.description.replace(/<[^>]*>?/gm, "").replace(/&nbsp;/g, " ").trim() : "";
                   const isRedundant = cleanedDescription.includes(article.title) || article.title.includes(cleanedDescription);
                   return (
