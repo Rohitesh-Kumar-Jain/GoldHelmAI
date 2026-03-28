@@ -58,7 +58,7 @@ const INDICATOR_META = {
   },
 };
 
-const CHART_COLORS = ["#a56a00", "#2f6f65", "#9f3f24", "#7b5ea7"];
+const CHART_COLORS = ["#a56a00", "#2f6f65", "#9f3f24", "#7b5ea7", "#5c7081"];
 
 function safeParseJson(rawBody) {
   if (!rawBody) {
@@ -182,9 +182,14 @@ function explainIndicator(indicatorKey, payload) {
 
   switch (indicatorKey) {
     case "rsi":
-      if (payload.value > 70) return `RSI at ${formatNumber(payload.value)} suggests overbought conditions and possible exhaustion.`;
-      if (payload.value < 30) return `RSI at ${formatNumber(payload.value)} suggests oversold conditions and rebound potential.`;
-      return `RSI at ${formatNumber(payload.value)} suggests balanced momentum without an extreme condition.`;
+      let explanation = `RSI at ${formatNumber(payload.value)} suggests balanced momentum without an extreme condition.`;
+      if (payload.value > 70) explanation = `RSI at ${formatNumber(payload.value)} suggests overbought conditions and possible exhaustion.`;
+      else if (payload.value < 30) explanation = `RSI at ${formatNumber(payload.value)} suggests oversold conditions and rebound potential.`;
+      
+      if (payload.divergence && payload.divergence !== "None") {
+        explanation += ` Note: ${payload.divergence} detected over the recent period.`;
+      }
+      return explanation;
     case "moving_averages":
       if (payload.signal === "BUY") return "Price is trading above both MA50 and MA200, which supports an established uptrend.";
       if (payload.signal === "SELL") return "Price is below both MA50 and MA200, which suggests trend weakness.";
@@ -224,20 +229,27 @@ function explainIndicator(indicatorKey, payload) {
   }
 }
 
-function buildPath(points, width, height, padding, globalMin, globalRange) {
+function buildPath(points, width, height, padding, globalMin, globalRange, isVolume = false) {
   if (points.length < 2) {
-    return "";
+    return { d: "", area: "" };
   }
 
   const usableWidth = width - padding * 2;
 
-  return points
+  const d = points
     .map((point, index) => {
       const x = padding + (index / (points.length - 1)) * usableWidth;
-      const y = getYPosition(point.value, globalMin, globalRange, height, padding);
+      const y = getYPosition(point.value, globalMin, globalRange, height, padding, isVolume);
       return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
+
+  let area = "";
+  if (isVolume) {
+    area = `${d} L${width - padding},${height - padding} L${padding},${height - padding} Z`;
+  }
+
+  return { d, area };
 }
 
 function getChartBounds(series) {
@@ -261,8 +273,12 @@ function getXPosition(index, totalPoints, width, padding) {
   return padding + (index / (totalPoints - 1)) * usableWidth;
 }
 
-function getYPosition(value, minValue, range, height, padding) {
+function getYPosition(value, minValue, range, height, padding, isVolume = false) {
   const usableHeight = height - padding * 2;
+  if (isVolume) {
+    const volumeHeight = usableHeight * 0.25;
+    return height - padding - ((value - minValue) / range) * volumeHeight;
+  }
   return height - padding - ((value - minValue) / range) * usableHeight;
 }
 
@@ -286,10 +302,10 @@ function getNearestTooltipData(series, hoverX, width, padding) {
 
   const date = primarySeries.points?.[nearestIndex]?.date ?? "";
   const entries = series
-    .map((line, idx) => ({
+    .map((line) => ({
       label: line.label,
       point: line.points?.[nearestIndex] ?? null,
-      colorIndex: idx,
+      colorIndex: line.originalIndex,
     }))
     .filter((entry) => entry.point !== null);
 
@@ -307,6 +323,7 @@ function getReferenceLines(indicatorKey, minValue, maxValue) {
     case "rsi":
       return [
         { value: 70, label: "70", style: "overbought" },
+        { value: 50, label: "50", style: "baseline" },
         { value: 30, label: "30", style: "oversold" },
       ].filter((line) => inRange(line.value));
     case "stochastic":
@@ -332,12 +349,53 @@ function IndicatorChart({ chart, indicatorKey }) {
   const width = 320;
   const height = 180;
   const padding = 20;
-  const series = chart?.series ?? [];
+  const rawSeries = chart?.series ?? [];
+  const seriesWithProps = useMemo(() => rawSeries.map((line, index) => ({
+    ...line,
+    originalIndex: index,
+  })), [rawSeries]);
+
   const [hoverX, setHoverX] = useState(null);
-  const primarySeries = series.find((line) => (line.points ?? []).length > 0);
+  const [hiddenSeries, setHiddenSeries] = useState(new Set());
+
+  const toggleSeries = (label) => {
+    setHiddenSeries(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
+
+  const visibleSeries = useMemo(() => seriesWithProps.filter(line => !hiddenSeries.has(line.label)), [seriesWithProps, hiddenSeries]);
+
+  const primarySeries = visibleSeries.find((line) => (line.points ?? []).length > 0);
   const totalPoints = primarySeries?.points?.length ?? 0;
-  const { minValue, maxValue, range } = useMemo(() => getChartBounds(series), [series]);
-  const tooltip = hoverX === null ? null : getNearestTooltipData(series, hoverX, width, padding);
+
+  const { mainBounds, secBounds, volBounds, isPriceChart } = useMemo(() => {
+    const isPrice = ["moving_averages", "bollinger_bands", "fibonacci"].includes(indicatorKey);
+    const mainL = visibleSeries.filter(l => isPrice ? l.label !== "Volume" : l.label !== "Close" && l.label !== "Volume");
+    const secL = visibleSeries.filter(l => isPrice ? false : l.label === "Close");
+    const volL = visibleSeries.filter(l => l.label === "Volume");
+    return {
+      isPriceChart: isPrice,
+      mainBounds: getChartBounds(mainL),
+      secBounds: getChartBounds(secL),
+      volBounds: getChartBounds(volL),
+    };
+  }, [visibleSeries, indicatorKey]);
+
+  const getScale = (label) => {
+    if (label === "Volume") return { ...volBounds, isVolume: true };
+    if (label === "Close" && !isPriceChart) return { ...secBounds, isVolume: false };
+    return { ...mainBounds, isVolume: false };
+  };
+
+  const { minValue, maxValue, range } = mainBounds;
+  const tooltip = hoverX === null ? null : getNearestTooltipData(visibleSeries, hoverX, width, padding);
   const startDate = primarySeries?.points?.[0]?.date ?? "";
   const endDate = primarySeries?.points?.[totalPoints - 1]?.date ?? "";
   const midDate = primarySeries?.points?.[Math.floor(totalPoints / 2)]?.date ?? "";
@@ -345,7 +403,7 @@ function IndicatorChart({ chart, indicatorKey }) {
     minValue <= 0 && maxValue >= 0
       ? getYPosition(0, minValue, range, height, padding)
       : null;
-  const hasData = series.some((line) => (line.points ?? []).length > 1);
+  const hasData = visibleSeries.some((line) => (line.points ?? []).length > 1);
   const referenceLines = getReferenceLines(indicatorKey, minValue, maxValue);
 
   if (!hasData) {
@@ -387,30 +445,45 @@ function IndicatorChart({ chart, indicatorKey }) {
             </g>
           );
         })}
-        {series.map((line, index) => {
-          const path = buildPath(line.points ?? [], width, height, padding, minValue, range);
-          if (!path) {
-            return null;
-          }
+        {visibleSeries.map((line) => {
+          const scale = getScale(line.label);
+          const { d, area } = buildPath(line.points ?? [], width, height, padding, scale.minValue, scale.range, scale.isVolume);
+          if (!d) return null;
 
           const isClose = line.label === "Close";
-          const strokeColor = isClose ? "#333333" : CHART_COLORS[index % CHART_COLORS.length];
-          const strokeWidth = isClose ? "2" : "3";
-          const strokeOpacity = isClose ? 0.8 : 1;
-          const strokeDash = isClose ? "4 4" : "none";
+          const isVol = line.label === "Volume";
+          
+          let strokeColor = CHART_COLORS[line.originalIndex % CHART_COLORS.length];
+          let strokeWidth = "3";
+          let strokeOpacity = 1;
+          let strokeDash = "none";
+
+          if (isClose) {
+            strokeColor = "#333333";
+            strokeWidth = "2";
+            strokeOpacity = 0.8;
+            strokeDash = "4 4";
+          } else if (isVol) {
+            strokeColor = "rgba(122, 90, 41, 0.45)";
+            strokeWidth = "1.5";
+          }
 
           return (
-            <path
-              key={line.label}
-              d={path}
-              fill="none"
-              stroke={strokeColor}
-              strokeWidth={strokeWidth}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeDasharray={strokeDash}
-              opacity={strokeOpacity}
-            />
+            <g key={line.label}>
+              {isVol && area && (
+                <path d={area} fill="rgba(122, 90, 41, 0.12)" stroke="none" />
+              )}
+              <path
+                d={d}
+                fill="none"
+                stroke={strokeColor}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray={strokeDash}
+                opacity={strokeOpacity}
+              />
+            </g>
           );
         })}
         {tooltip && (
@@ -422,16 +495,19 @@ function IndicatorChart({ chart, indicatorKey }) {
               y2={height - padding}
               className="chart-cursor"
             />
-            {tooltip.entries.map((entry) => (
-              <circle
-                key={`${entry.label}-${entry.point.date}`}
-                cx={getXPosition(tooltip.index, totalPoints, width, padding)}
-                cy={getYPosition(entry.point.value, minValue, range, height, padding)}
-                r="3.5"
-                fill={entry.label === "Close" ? "#333333" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length]}
-                className="chart-point"
-              />
-            ))}
+            {tooltip.entries.map((entry) => {
+              const scale = getScale(entry.label);
+              return (
+                <circle
+                  key={`${entry.label}-${entry.point.date}`}
+                  cx={getXPosition(tooltip.index, totalPoints, width, padding)}
+                  cy={getYPosition(entry.point.value, scale.minValue, scale.range, height, padding, scale.isVolume)}
+                  r="3.5"
+                  fill={entry.label === "Close" ? "#333333" : entry.label === "Volume" ? "rgba(122, 90, 41, 0.8)" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length]}
+                  className="chart-point"
+                />
+              );
+            })}
           </>
         )}
         <text x={padding} y={padding - 4} className="chart-label">
@@ -455,7 +531,7 @@ function IndicatorChart({ chart, indicatorKey }) {
             <span className="tooltip-row" key={`${entry.label}-${entry.point.date}`}>
               <span
                 className="legend-dot"
-                style={{ backgroundColor: entry.label === "Close" ? "#333333" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length] }}
+                style={{ backgroundColor: entry.label === "Close" ? "#333333" : entry.label === "Volume" ? "rgba(122, 90, 41, 0.8)" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length] }}
               />
               {entry.label}: {formatNumber(entry.point.value, Math.abs(entry.point.value) < 10 ? 4 : 2)}
             </span>
@@ -464,11 +540,24 @@ function IndicatorChart({ chart, indicatorKey }) {
       )}
 
       <div className="chart-legend">
-        {series.map((line, index) => (
-          <span className="legend-item" key={line.label}>
-            <span className="legend-dot" style={{ backgroundColor: line.label === "Close" ? "#333333" : CHART_COLORS[index % CHART_COLORS.length] }} />
+        {seriesWithProps.map((line) => (
+          <button
+            type="button"
+            className="legend-item"
+            key={line.label}
+            onClick={() => toggleSeries(line.label)}
+            style={{ 
+              opacity: hiddenSeries.has(line.label) ? 0.4 : 1, 
+              border: 'none', 
+              background: 'transparent', 
+              cursor: 'pointer', 
+              padding: 0,
+              fontFamily: 'inherit'
+            }}
+          >
+            <span className="legend-dot" style={{ backgroundColor: line.label === "Close" ? "#333333" : line.label === "Volume" ? "rgba(122, 90, 41, 0.8)" : CHART_COLORS[line.originalIndex % CHART_COLORS.length] }} />
             {line.label}
-          </span>
+          </button>
         ))}
       </div>
     </div>

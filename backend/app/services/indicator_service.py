@@ -82,11 +82,56 @@ class IndicatorService:
         losses = (-delta.clip(upper=0)).rolling(period).mean()
         rs = gains / losses.replace(0, np.nan)
         rsi = 100 - (100 / (1 + rs))
+        
+        # Smoothing (Signal line)
+        rsi_sma = rsi.rolling(period).mean()
+        
+        # Weekly RSI approximation
+        df_dt = frame.copy()
+        df_dt["date_parsed"] = pd.to_datetime(df_dt["date"], errors="coerce")
+        df_weekly = df_dt.set_index("date_parsed").resample("W-FRI").agg({"close": "last"}).dropna()
+        w_delta = df_weekly["close"].diff()
+        w_gains = w_delta.clip(lower=0).rolling(period).mean()
+        w_losses = (-w_delta.clip(upper=0)).rolling(period).mean()
+        w_rs = w_gains / w_losses.replace(0, np.nan)
+        weekly_rsi = 100 - (100 / (1 + w_rs))
+        
+        df_weekly["weekly_rsi"] = weekly_rsi
+        merged = pd.merge(df_dt, df_weekly[["weekly_rsi"]], left_on="date_parsed", right_index=True, how="left")
+        merged["weekly_rsi"] = merged["weekly_rsi"].ffill()
+
         value = self._safe_value(rsi.iloc[-1], fallback=50.0)
         signal = "SELL" if value > 70 else "BUY" if value < 30 else "HOLD"
+        
+        # Check for divergence
+        recent_prices = frame["close"].tail(period)
+        recent_rsi = rsi.tail(period)
+        price_trend = self._safe_value(recent_prices.iloc[-1]) - self._safe_value(recent_prices.iloc[0])
+        rsi_trend = self._safe_value(recent_rsi.iloc[-1]) - self._safe_value(recent_rsi.iloc[0])
+        divergence = "None"
+        if price_trend > 0 > rsi_trend and value > 50:
+            divergence = "Bearish Divergence"
+        elif price_trend < 0 < rsi_trend and value < 50:
+            divergence = "Bullish Divergence"
+
+        chart_df = frame.copy()
+        chart_df["rsi"] = rsi
+        chart_df["rsi_sma"] = rsi_sma
+        chart_df["weekly_rsi"] = merged["weekly_rsi"]
+        
         return {
-            "latest": {"value": round(value, 2), "signal": signal},
-            "chart": self._single_line_chart(frame, "RSI", rsi, decimals=2),
+            "latest": {"value": round(value, 2), "signal": signal, "divergence": divergence},
+            "chart": self._multi_line_chart(
+                chart_df,
+                [
+                    ("RSI", chart_df["rsi"]),
+                    ("RSI SMA", chart_df["rsi_sma"]),
+                    ("Weekly RSI", chart_df["weekly_rsi"]),
+                    ("Close", chart_df["close"]),
+                    ("Volume", chart_df["volume"]),
+                ],
+                decimals=2
+            ),
         }
 
     def _moving_averages(self, frame: pd.DataFrame) -> dict[str, Any]:
