@@ -2,12 +2,14 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
+from app.agents.reasoning_agent import ReasoningAgent
 from app.models.schemas import (
     HistoryResponse,
     PredictResponse,
     PriceResponse,
     SentimentResponse,
 )
+from app.rl.inference import RLInferenceService
 from app.services.data_service import DataUnavailableError, GoldDataService
 from app.services.news_service import NewsService
 from app.services.prediction_service import PredictionService
@@ -24,10 +26,14 @@ router = APIRouter(prefix=f"{settings.api_prefix}/api" if settings.api_prefix el
 data_service = GoldDataService()
 news_service = NewsService()
 sentiment_service = SentimentService()
+reasoning_agent = ReasoningAgent()
+rl_inference_service = RLInferenceService()
 prediction_service = PredictionService(
     data_service=data_service,
     news_service=news_service,
     sentiment_service=sentiment_service,
+    reasoning_agent=reasoning_agent,
+    rl_inference_service=rl_inference_service,
 )
 
 
