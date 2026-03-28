@@ -727,8 +727,13 @@ function App() {
     bullish: 0,
     bearish: 0,
     neutral: 0,
-    score: 0,
     conflicting_signals: [],
+  };
+  const indicatorScore = dashboard.prediction?.indicator_score ?? {
+    score: 0,
+    signal: "HOLD",
+    confidence: 0,
+    breakdown: { trend: 0, momentum: 0, volatility_adjustment: 1.0, structure: 0 },
   };
   const technicalIndicators = dashboard.prediction?.technical_indicators ?? {};
   const indicatorCharts = dashboard.prediction?.indicator_charts ?? {};
@@ -839,16 +844,24 @@ function App() {
             </div>
 
             <div style={{ marginBottom: 24, padding: "16px 20px", borderRadius: 16, background: "rgba(255, 250, 240, 0.9)", border: "1px solid rgba(122, 90, 41, 0.15)" }}>
-              <p className="card-label">Confluence Score</p>
+              <p className="card-label">Technical Scoring Engine</p>
               <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                 <div style={{ flex: 1, height: 8, borderRadius: 4, background: "linear-gradient(90deg, var(--bearish) 0%, var(--neutral) 50%, var(--bullish) 100%)", position: "relative" }}>
-                   <div style={{ position: "absolute", top: -6, bottom: -6, width: 4, background: "#333", borderRadius: 2, left: `${Math.max(0, Math.min(100, (indicatorSummary.score + 1) * 50))}%` }} />
+                   <div style={{ position: "absolute", top: -6, bottom: -6, width: 4, background: "#333", borderRadius: 2, left: `${Math.max(0, Math.min(100, (indicatorScore.score + 100) / 2))}%` }} />
                 </div>
-                <strong style={{ fontSize: "1.2rem", color: indicatorSummary.score > 0.2 ? "var(--bullish)" : indicatorSummary.score < -0.2 ? "var(--bearish)" : "var(--neutral)", minWidth: "180px", textAlign: "right" }}>
-                   {indicatorSummary.score > 0.2 ? "Bullish Alignment" : indicatorSummary.score < -0.2 ? "Bearish Alignment" : "Mixed / Weak Confluence"}
+                <strong style={{ fontSize: "1.2rem", color: indicatorScore.score > 20 ? "var(--bullish)" : indicatorScore.score < -20 ? "var(--bearish)" : "var(--neutral)", minWidth: "180px", textAlign: "right" }}>
+                   {indicatorScore.signal} ({formatNumber(indicatorScore.score)})
                 </strong>
               </div>
-              <p className="card-meta" style={{ marginTop: 8 }}>Professional confluence framework weighting directional agreement across all 10 indicators.</p>
+              <p className="card-meta" style={{ marginTop: 8 }}>
+                 Breakdown: Trend {indicatorScore.breakdown.trend.toFixed(1)} | Momentum {indicatorScore.breakdown.momentum.toFixed(1)} | Structure {indicatorScore.breakdown.structure.toFixed(1)} | Score Confidence: {formatPercent(indicatorScore.confidence * 100)}
+              </p>
+              
+              {indicatorScore.breakdown.volatility_adjustment < 1.0 && (
+                <div style={{ marginTop: 8 }}>
+                  <span style={{ background: "#9f3f24", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: "bold" }}>⚠️ ATR HIGH VOLATILITY PENALTY APPLIED</span>
+                </div>
+              )}
               
               {indicatorSummary.conflicting_signals && indicatorSummary.conflicting_signals.length > 0 && (
                 <div style={{ marginTop: 12, padding: "12px", background: "rgba(159, 63, 36, 0.05)", borderRadius: 8, border: "1px solid rgba(159, 63, 36, 0.2)" }}>

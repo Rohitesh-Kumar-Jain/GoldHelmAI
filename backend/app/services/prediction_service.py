@@ -15,6 +15,7 @@ from app.rl.inference import RLInferenceService
 from app.services.data_service import GoldDataService
 from app.services.feature_service import FeatureEngineeringService
 from app.services.indicator_service import IndicatorService
+from app.services.scoring_service import ScoringService
 from app.services.news_service import NewsService
 from app.services.sentiment_service import SentimentService
 from app.utils.config import get_settings
@@ -146,6 +147,11 @@ class PredictionService:
             risk_level,
         )
 
+        indicator_score = ScoringService.compute_score(
+            current_price=last_close, 
+            indicators=indicator_payload["technical_indicators"]
+        )
+
         return {
             "ticker": self.data_service.ticker,
             "as_of": str(latest_row["date"].date()),
@@ -162,6 +168,7 @@ class PredictionService:
                 "score": round(float(sentiment["sentiment_score"]), 4),
                 "label": sentiment["label"],
             },
+            "indicator_score": indicator_score,
             "technical_indicators": indicator_payload["technical_indicators"],
             "indicator_summary": indicator_payload["indicator_summary"],
             "indicator_charts": indicator_payload["indicator_charts"],
