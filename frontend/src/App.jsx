@@ -191,16 +191,9 @@ function explainIndicator(indicatorKey, payload) {
       }
       return explanation;
     case "moving_averages":
-      if (payload.signal === "BUY") return "Price is trading above both MA50 and MA200, which supports an established uptrend.";
-      if (payload.signal === "SELL") return "Price is below both MA50 and MA200, which suggests trend weakness.";
-      return "Price is mixed versus MA50 and MA200, so the trend picture is not fully aligned.";
     case "macd":
-      if (payload.signal === "BUY") return "MACD is above its signal line, which points to improving upside momentum.";
-      return "MACD is below its signal line, which points to fading momentum or a bearish crossover.";
     case "bollinger_bands":
-      if (payload.signal === "BUY") return "Price is pressing near the lower band, which can indicate an oversold area.";
-      if (payload.signal === "SELL") return "Price is pressing near the upper band, which can indicate an overextended move.";
-      return "Price is trading inside the bands without sitting near an extreme.";
+      return payload.message || "No description available.";
     case "momentum":
       if (payload.value > 0) return `Momentum is positive at ${formatNumber(payload.value)}, so recent price change is still pointing upward.`;
       if (payload.value < 0) return `Momentum is negative at ${formatNumber(payload.value)}, so recent price change is still pointing downward.`;
@@ -214,16 +207,8 @@ function explainIndicator(indicatorKey, payload) {
       return `Stochastic at ${formatNumber(payload.value)} shows the close is sitting in the middle of the recent range.`;
     case "obv":
       if (payload.signal === "BUY") return "OBV is rising, which suggests volume is confirming buying pressure.";
-      if (payload.signal === "SELL") return "OBV is falling, which suggests volume is not confirming strength.";
-      return "OBV is flat, so volume confirmation is limited right now.";
-    case "fibonacci":
-      if (payload.signal === "BUY") return "Price is sitting near a deeper retracement support zone, which can attract buyers.";
-      if (payload.signal === "SELL") return "Price is close to a nearby retracement resistance zone, which can slow upside continuation.";
-      return "Price is not especially close to a key Fibonacci support or resistance level.";
-    case "adx":
-      if (payload.signal === "STRONG_TREND") return `ADX at ${formatNumber(payload.value)} suggests a strong directional trend is in place.`;
-      if (payload.signal === "WEAK_TREND") return `ADX at ${formatNumber(payload.value)} suggests a weak or range-bound market.`;
-      return `ADX at ${formatNumber(payload.value)} suggests trend strength is present but not especially strong.`;
+      if (payload.stop_1x) return `ATR is ${formatNumber(payload.value)}. Programmatic stops: 1x = ${payload.stop_1x}, 1.5x = ${payload.stop_1_5x}, 2x = ${payload.stop_2x}.`;
+      return `Average True Range is ${formatNumber(payload.value)}, reflecting the typical price fluctuation per period.`;
     default:
       return "This indicator helps add context to the broader technical setup.";
   }
@@ -319,18 +304,22 @@ function getNearestTooltipData(series, hoverX, width, padding) {
 function getReferenceLines(indicatorKey, minValue, maxValue) {
   const inRange = (value) => value >= minValue && value <= maxValue;
 
+  if (indicatorKey === "rsi") {
+    return [
+      { value: 70, label: "70", style: "overbought" },
+      { value: 50, label: "50", style: "baseline" },
+      { value: 30, label: "30", style: "oversold" },
+    ].filter((line) => inRange(line.value));
+  }
+  if (indicatorKey === "stochastic") {
+    return [
+      { value: 80, label: "80", style: "overbought" },
+      { value: 50, label: "50", style: "baseline" },
+      { value: 20, label: "20", style: "oversold" },
+    ].filter((line) => inRange(line.value));
+  }
+  
   switch (indicatorKey) {
-    case "rsi":
-      return [
-        { value: 70, label: "70", style: "overbought" },
-        { value: 50, label: "50", style: "baseline" },
-        { value: 30, label: "30", style: "oversold" },
-      ].filter((line) => inRange(line.value));
-    case "stochastic":
-      return [
-        { value: 80, label: "80", style: "overbought" },
-        { value: 20, label: "20", style: "oversold" },
-      ].filter((line) => inRange(line.value));
     case "adx":
       return [
         { value: 25, label: "Trend 25", style: "trend" },
@@ -377,8 +366,8 @@ function IndicatorChart({ chart, indicatorKey }) {
 
   const { mainBounds, secBounds, volBounds, isPriceChart } = useMemo(() => {
     const isPrice = ["moving_averages", "bollinger_bands", "fibonacci"].includes(indicatorKey);
-    const mainL = visibleSeries.filter(l => isPrice ? l.label !== "Volume" : l.label !== "Close" && l.label !== "Volume");
-    const secL = visibleSeries.filter(l => isPrice ? false : l.label === "Close");
+    const mainL = visibleSeries.filter(l => isPrice ? l.label !== "Volume" : l.label !== "Close" && l.label !== "Candles" && l.label !== "Volume");
+    const secL = visibleSeries.filter(l => isPrice ? false : l.label === "Close" || l.label === "Candles");
     const volL = visibleSeries.filter(l => l.label === "Volume");
     return {
       isPriceChart: isPrice,
@@ -390,7 +379,7 @@ function IndicatorChart({ chart, indicatorKey }) {
 
   const getScale = (label) => {
     if (label === "Volume") return { ...volBounds, isVolume: true };
-    if (label === "Close" && !isPriceChart) return { ...secBounds, isVolume: false };
+    if ((label === "Close" || label === "Candles") && !isPriceChart) return { ...secBounds, isVolume: false };
     return { ...mainBounds, isVolume: false };
   };
 
@@ -451,8 +440,49 @@ function IndicatorChart({ chart, indicatorKey }) {
           if (!d) return null;
 
           const isClose = line.label === "Close";
+          const isCandles = line.label === "Candles";
           const isVol = line.label === "Volume";
-          
+          const isHistogram = line.label === "Histogram";
+
+          if (isCandles) {
+            return (
+              <g key={line.label}>
+                {line.points.map((pt, i) => {
+                  const x = padding + (i / (totalPoints - 1)) * (width - padding * 2);
+                  const yO = getYPosition(pt.open, scale.minValue, scale.range, height, padding, false);
+                  const yH = getYPosition(pt.high, scale.minValue, scale.range, height, padding, false);
+                  const yL = getYPosition(pt.low, scale.minValue, scale.range, height, padding, false);
+                  const yC = getYPosition(pt.close, scale.minValue, scale.range, height, padding, false);
+                  const isGreen = pt.close >= pt.open;
+                  const color = isGreen ? "var(--bullish)" : "var(--bearish)";
+                  const barW = Math.max(((width - padding * 2) / totalPoints) * 0.6, 1);
+                  return (
+                    <g key={pt.date || i}>
+                      <line x1={x} y1={yH} x2={x} y2={yL} stroke={color} strokeWidth="1" />
+                      <rect x={x - barW / 2} y={Math.min(yO, yC)} width={barW} height={Math.max(Math.abs(yO - yC), 1)} fill={color} />
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          }
+
+          if (isHistogram) {
+             return (
+               <g key={line.label}>
+                 {line.points.map((pt, i) => {
+                   const x = padding + (i / (totalPoints - 1)) * (width - padding * 2);
+                   const baseY = getYPosition(0, scale.minValue, scale.range, height, padding, false);
+                   const y = getYPosition(pt.value, scale.minValue, scale.range, height, padding, false);
+                   const isPos = pt.value >= 0;
+                   const color = isPos ? "rgba(47, 111, 101, 0.5)" : "rgba(159, 63, 36, 0.5)";
+                   const barW = Math.max(((width - padding * 2) / totalPoints) * 0.8, 1);
+                   return <rect key={pt.date || i} x={x - barW/2} y={Math.min(y, baseY)} width={barW} height={Math.max(Math.abs(y - baseY), 1)} fill={color} />;
+                 })}
+               </g>
+             );
+          }
+
           let strokeColor = CHART_COLORS[line.originalIndex % CHART_COLORS.length];
           let strokeWidth = "3";
           let strokeOpacity = 1;
@@ -503,7 +533,7 @@ function IndicatorChart({ chart, indicatorKey }) {
                   cx={getXPosition(tooltip.index, totalPoints, width, padding)}
                   cy={getYPosition(entry.point.value, scale.minValue, scale.range, height, padding, scale.isVolume)}
                   r="3.5"
-                  fill={entry.label === "Close" ? "#333333" : entry.label === "Volume" ? "rgba(122, 90, 41, 0.8)" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length]}
+                  fill={(entry.label === "Close" || entry.label === "Candles") ? "#333333" : entry.label === "Volume" ? "rgba(122, 90, 41, 0.8)" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length]}
                   className="chart-point"
                 />
               );
@@ -531,9 +561,9 @@ function IndicatorChart({ chart, indicatorKey }) {
             <span className="tooltip-row" key={`${entry.label}-${entry.point.date}`}>
               <span
                 className="legend-dot"
-                style={{ backgroundColor: entry.label === "Close" ? "#333333" : entry.label === "Volume" ? "rgba(122, 90, 41, 0.8)" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length] }}
+                style={{ backgroundColor: (entry.label === "Close" || entry.label === "Candles") ? "#333333" : entry.label === "Volume" ? "rgba(122, 90, 41, 0.8)" : CHART_COLORS[entry.colorIndex % CHART_COLORS.length] }}
               />
-              {entry.label}: {formatNumber(entry.point.value, Math.abs(entry.point.value) < 10 ? 4 : 2)}
+              {entry.label}: {entry.label === "Candles" ? `O:${formatNumber(entry.point.open)} H:${formatNumber(entry.point.high)} L:${formatNumber(entry.point.low)} C:${formatNumber(entry.point.close)}` : formatNumber(entry.point.value, Math.abs(entry.point.value) < 10 ? 4 : 2)}
             </span>
           ))}
         </div>
@@ -555,7 +585,7 @@ function IndicatorChart({ chart, indicatorKey }) {
               fontFamily: 'inherit'
             }}
           >
-            <span className="legend-dot" style={{ backgroundColor: line.label === "Close" ? "#333333" : line.label === "Volume" ? "rgba(122, 90, 41, 0.8)" : CHART_COLORS[line.originalIndex % CHART_COLORS.length] }} />
+            <span className="legend-dot" style={{ backgroundColor: (line.label === "Close" || line.label === "Candles") ? "#333333" : line.label === "Volume" ? "rgba(122, 90, 41, 0.8)" : CHART_COLORS[line.originalIndex % CHART_COLORS.length] }} />
             {line.label}
           </button>
         ))}
@@ -693,7 +723,13 @@ function App() {
     return () => abortController.abort();
   }, []);
 
-  const indicatorSummary = dashboard.prediction?.indicator_summary ?? { bullish: 0, bearish: 0, neutral: 0 };
+  const indicatorSummary = dashboard.prediction?.indicator_summary ?? {
+    bullish: 0,
+    bearish: 0,
+    neutral: 0,
+    score: 0,
+    conflicting_signals: [],
+  };
   const technicalIndicators = dashboard.prediction?.technical_indicators ?? {};
   const indicatorCharts = dashboard.prediction?.indicator_charts ?? {};
 
@@ -800,6 +836,36 @@ function App() {
                 <span className="chip-label">Neutral</span>
                 <strong>{indicatorSummary.neutral}</strong>
               </article>
+            </div>
+
+            <div style={{ marginBottom: 24, padding: "16px 20px", borderRadius: 16, background: "rgba(255, 250, 240, 0.9)", border: "1px solid rgba(122, 90, 41, 0.15)" }}>
+              <p className="card-label">Confluence Score</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                <div style={{ flex: 1, height: 8, borderRadius: 4, background: "linear-gradient(90deg, var(--bearish) 0%, var(--neutral) 50%, var(--bullish) 100%)", position: "relative" }}>
+                   <div style={{ position: "absolute", top: -6, bottom: -6, width: 4, background: "#333", borderRadius: 2, left: `${Math.max(0, Math.min(100, (indicatorSummary.score + 1) * 50))}%` }} />
+                </div>
+                <strong style={{ fontSize: "1.2rem", color: indicatorSummary.score > 0.2 ? "var(--bullish)" : indicatorSummary.score < -0.2 ? "var(--bearish)" : "var(--neutral)", minWidth: "180px", textAlign: "right" }}>
+                   {indicatorSummary.score > 0.2 ? "Bullish Alignment" : indicatorSummary.score < -0.2 ? "Bearish Alignment" : "Mixed / Weak Confluence"}
+                </strong>
+              </div>
+              <p className="card-meta" style={{ marginTop: 8 }}>Professional confluence framework weighting directional agreement across all 10 indicators.</p>
+              
+              {indicatorSummary.conflicting_signals && indicatorSummary.conflicting_signals.length > 0 && (
+                <div style={{ marginTop: 12, padding: "12px", background: "rgba(159, 63, 36, 0.05)", borderRadius: 8, border: "1px solid rgba(159, 63, 36, 0.2)" }}>
+                  <strong style={{ color: "var(--bearish)", fontSize: "0.9rem" }}>Conflicting Signals Detected:</strong>
+                  <ul style={{ margin: "4px 0 0 0", paddingLeft: 20, fontSize: "0.85rem", color: "#666" }}>
+                    {indicatorSummary.conflicting_signals.map(s => <li key={s}>{s}</li>)}
+                  </ul>
+                </div>
+              )}
+              
+              {dashboard.prediction?.special_flags && Object.values(dashboard.prediction.special_flags).some(v => v) && (
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                   {dashboard.prediction.special_flags.falling_knife && <span style={{ background: "#9f3f24", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: "bold" }}>⚠️ FALLING KNIFE</span>}
+                   {dashboard.prediction.special_flags.dead_cat_bounce && <span style={{ background: "#9f3f24", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: "bold" }}>⚠️ DEAD CAT BOUNCE</span>}
+                   {dashboard.prediction.special_flags.timeframe_alignment && <span style={{ background: "#2f6f65", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: "bold" }}>✅ TIMEFRAME ALIGNED (1D/1W)</span>}
+                </div>
+              )}
             </div>
 
             <div className="indicator-grid">
