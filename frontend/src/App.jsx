@@ -1075,8 +1075,22 @@ GoldHelm combines machine learning, reinforcement learning, sentiment analysis, 
           </div>
         </section>
 
-        {loading && <p className="status">Loading market data...</p>}
-        {error && <p className="error">{error}</p>}
+        {loading && (
+          <div className="status" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "20px", background: "rgba(255, 250, 240, 0.8)", borderRadius: "16px", border: "1px solid var(--border)" }}>
+            <p style={{ margin: 0, fontWeight: 600 }}>📡 Initializing market intelligence feeds...</p>
+            <p style={{ margin: 0, fontSize: "0.85rem", color: "var(--muted)", lineHeight: "1.5" }}>
+              Note: Our backend engine uses a free-tier hosting instance. If it has been inactive, it may take <strong>approximately 60 seconds</strong> to spin up and process the latest technical signals. Thank you for your patience.
+            </p>
+          </div>
+        )}
+        {error && (
+          <div className="error" style={{ display: "flex", flexDirection: "column", gap: "8px", padding: "20px", background: "rgba(146, 24, 24, 0.08)", borderRadius: "16px", border: "1px solid rgba(146, 24, 24, 0.16)", color: "#8a1f1f" }}>
+            <p style={{ margin: 0, fontWeight: 600 }}>Connection Error: {error}</p>
+            <p style={{ margin: 0, fontSize: "0.85rem", opacity: 0.85, lineHeight: "1.5" }}>
+              If this is the first time you've visited in a while, the backend engine may have timed out while waking up from its hosting sleep mode. <strong>Please wait 30 seconds and refresh.</strong>
+            </p>
+          </div>
+        )}
 
         {!loading && hasDashboardData && (
           <>
