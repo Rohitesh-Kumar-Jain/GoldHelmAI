@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "").replace(/\/$/, "");
 
@@ -58,7 +58,14 @@ const INDICATOR_META = {
   },
 };
 
-const CHART_COLORS = ["#a56a00", "#2f6f65", "#9f3f24", "#7b5ea7"];
+const INDICATOR_GROUPS = [
+  { key: "trend", title: "Trend", summaryTitle: "Trend State", indicators: ["moving_averages", "macd", "adx"] },
+  { key: "momentum", title: "Momentum", summaryTitle: "Momentum State", indicators: ["rsi", "stochastic", "momentum"] },
+  { key: "volatility", title: "Volatility", summaryTitle: "Volatility State", indicators: ["atr", "bollinger_bands"] },
+  { key: "structure", title: "Structure", summaryTitle: "Structure State", indicators: ["fibonacci", "obv"] },
+];
+
+const CHART_COLORS = ["#a56a00", "#2f6f65", "#9f3f24", "#7b5ea7", "#5c7081"];
 
 function safeParseJson(rawBody) {
   if (!rawBody) {
@@ -80,9 +87,7 @@ async function fetchJson(path, signal) {
 
   if (!response.ok && response.status === 404 && path.startsWith("/api/")) {
     const fallbackPath = path.replace(/^\/api/, "");
-    const fallbackRequestPath = API_BASE_URL
-      ? `${API_BASE_URL}${fallbackPath}`
-      : fallbackPath;
+    const fallbackRequestPath = API_BASE_URL ? `${API_BASE_URL}${fallbackPath}` : fallbackPath;
 
     response = await fetch(fallbackRequestPath, { signal });
     rawBody = await response.text();
@@ -148,12 +153,84 @@ function formatDateLabel(value) {
   }).format(parsed);
 }
 
+function formatDateTimeLabel(value) {
+  if (!value) {
+    return "Unavailable";
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(parsed);
+}
+
 function normalizeHistory(response) {
   if (!response || !Array.isArray(response.history)) {
     return [];
   }
 
   return response.history.slice(-5).reverse();
+}
+
+function normalizeDecisionLabel(value) {
+  return typeof value === "string" && value.trim() ? value.trim().toUpperCase() : "HOLD";
+}
+
+function getSignalTone(signal) {
+  const normalized = normalizeDecisionLabel(signal);
+  if (normalized.includes("BUY")) {
+    return "bullish";
+  }
+  if (normalized.includes("SELL")) {
+    return "bearish";
+  }
+  return "neutral";
+}
+
+function getConfidenceBucket(value) {
+  if (typeof value !== "number" || Number.isNaN(value)) {
+    return { label: "Unknown confidence", tone: "neutral" };
+  }
+  if (value >= 0.75) {
+    return { label: "High confidence", tone: "bullish" };
+  }
+  if (value >= 0.5) {
+    return { label: "Moderate confidence", tone: "neutral" };
+  }
+  return { label: "Low confidence", tone: "bearish" };
+}
+
+function getScoreZone(score) {
+  if (typeof score !== "number" || Number.isNaN(score)) {
+    return { label: "Neutral", tone: "neutral" };
+  }
+  if (score <= -60) {
+    return { label: "Strong sell", tone: "bearish" };
+  }
+  if (score < -20) {
+    return { label: "Sell bias", tone: "bearish" };
+  }
+  if (score <= 20) {
+    return { label: "Neutral", tone: "neutral" };
+  }
+  if (score < 60) {
+    return { label: "Buy bias", tone: "bullish" };
+  }
+  return { label: "Strong buy", tone: "bullish" };
+}
+
+function getRiskTone(riskLevel) {
+  if (!riskLevel) {
+    return "neutral";
+  }
+  return riskLevel.toLowerCase() === "high" ? "bearish" : "neutral";
 }
 
 function summarizeIndicator(indicatorKey, payload) {
@@ -181,21 +258,19 @@ function explainIndicator(indicatorKey, payload) {
   }
 
   switch (indicatorKey) {
-    case "rsi":
-      if (payload.value > 70) return `RSI at ${formatNumber(payload.value)} suggests overbought conditions and possible exhaustion.`;
-      if (payload.value < 30) return `RSI at ${formatNumber(payload.value)} suggests oversold conditions and rebound potential.`;
-      return `RSI at ${formatNumber(payload.value)} suggests balanced momentum without an extreme condition.`;
+    case "rsi": {
+      let explanation = `RSI at ${formatNumber(payload.value)} suggests balanced momentum without an extreme condition.`;
+      if (payload.value > 70) explanation = `RSI at ${formatNumber(payload.value)} suggests overbought conditions and possible exhaustion.`;
+      else if (payload.value < 30) explanation = `RSI at ${formatNumber(payload.value)} suggests oversold conditions and rebound potential.`;
+      if (payload.divergence && payload.divergence !== "None") {
+        explanation += ` Note: ${payload.divergence} detected over the recent period.`;
+      }
+      return explanation;
+    }
     case "moving_averages":
-      if (payload.signal === "BUY") return "Price is trading above both MA50 and MA200, which supports an established uptrend.";
-      if (payload.signal === "SELL") return "Price is below both MA50 and MA200, which suggests trend weakness.";
-      return "Price is mixed versus MA50 and MA200, so the trend picture is not fully aligned.";
     case "macd":
-      if (payload.signal === "BUY") return "MACD is above its signal line, which points to improving upside momentum.";
-      return "MACD is below its signal line, which points to fading momentum or a bearish crossover.";
     case "bollinger_bands":
-      if (payload.signal === "BUY") return "Price is pressing near the lower band, which can indicate an oversold area.";
-      if (payload.signal === "SELL") return "Price is pressing near the upper band, which can indicate an overextended move.";
-      return "Price is trading inside the bands without sitting near an extreme.";
+      return payload.message || "No description available.";
     case "momentum":
       if (payload.value > 0) return `Momentum is positive at ${formatNumber(payload.value)}, so recent price change is still pointing upward.`;
       if (payload.value < 0) return `Momentum is negative at ${formatNumber(payload.value)}, so recent price change is still pointing downward.`;
@@ -209,40 +284,173 @@ function explainIndicator(indicatorKey, payload) {
       return `Stochastic at ${formatNumber(payload.value)} shows the close is sitting in the middle of the recent range.`;
     case "obv":
       if (payload.signal === "BUY") return "OBV is rising, which suggests volume is confirming buying pressure.";
-      if (payload.signal === "SELL") return "OBV is falling, which suggests volume is not confirming strength.";
-      return "OBV is flat, so volume confirmation is limited right now.";
+      return "OBV is not strongly confirming the current move.";
     case "fibonacci":
-      if (payload.signal === "BUY") return "Price is sitting near a deeper retracement support zone, which can attract buyers.";
-      if (payload.signal === "SELL") return "Price is close to a nearby retracement resistance zone, which can slow upside continuation.";
-      return "Price is not especially close to a key Fibonacci support or resistance level.";
+      return "Fibonacci levels help frame nearby support and resistance zones.";
     case "adx":
-      if (payload.signal === "STRONG_TREND") return `ADX at ${formatNumber(payload.value)} suggests a strong directional trend is in place.`;
-      if (payload.signal === "WEAK_TREND") return `ADX at ${formatNumber(payload.value)} suggests a weak or range-bound market.`;
-      return `ADX at ${formatNumber(payload.value)} suggests trend strength is present but not especially strong.`;
+      if (payload.value >= 25) return `ADX at ${formatNumber(payload.value)} suggests a strong directional market.`;
+      if (payload.value < 20) return `ADX at ${formatNumber(payload.value)} suggests a weak or choppy market.`;
+      return `ADX at ${formatNumber(payload.value)} suggests a developing trend.`;
     default:
       return "This indicator helps add context to the broader technical setup.";
   }
 }
 
-function buildPath(points, width, height, padding) {
-  if (points.length < 2) {
-    return "";
+function buildDecisionDrivers({ prediction, indicatorScore, indicatorSummary, technicalIndicators }) {
+  const finalDecision = normalizeDecisionLabel(prediction?.decision);
+  const reasoningDecision = normalizeDecisionLabel(prediction?.debate?.reasoning_agent?.decision);
+  const rlDecision = normalizeDecisionLabel(prediction?.debate?.rl_agent?.decision || prediction?.rl_decision);
+  const technicalDecision = normalizeDecisionLabel(indicatorScore?.signal);
+
+  const systems = [
+    { label: "Final", decision: finalDecision, confidence: prediction?.confidence ?? null, role: "final" },
+    { label: "Reasoning", decision: reasoningDecision, confidence: prediction?.debate?.reasoning_agent?.confidence ?? null },
+    { label: "RL", decision: rlDecision, confidence: prediction?.debate?.rl_agent?.confidence ?? null },
+    { label: "Technicals", decision: technicalDecision, confidence: indicatorScore?.confidence ?? null },
+  ];
+
+  const counts = systems
+    .filter((system) => system.role !== "final")
+    .reduce((acc, system) => {
+      acc[system.decision] = (acc[system.decision] || 0) + 1;
+      return acc;
+    }, {});
+
+  const dominantEntry = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+  const dominantDecision = dominantEntry?.[0] ?? finalDecision;
+  const disagreementCount = new Set(systems.filter((system) => system.role !== "final").map((system) => system.decision)).size;
+  const hasConflict =
+    disagreementCount > 1 ||
+    (indicatorSummary?.conflicting_signals ?? []).length > 0 ||
+    prediction?.debate?.agreement === false;
+
+  let dominantReason = "Aligned across systems";
+  if (hasConflict && finalDecision !== dominantDecision) {
+    dominantReason = "Coordinator overrode the majority and favored caution";
+  } else if (hasConflict) {
+    dominantReason = `Coordinator followed the strongest ${finalDecision.toLowerCase()} bias`;
+  } else if (finalDecision === technicalDecision) {
+    dominantReason = "Technical and model outputs are aligned";
   }
 
-  const values = points.map((point) => point.value);
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
-  const range = maxValue - minValue || 1;
-  const usableWidth = width - padding * 2;
-  const usableHeight = height - padding * 2;
+  const topSignals = Object.entries(technicalIndicators ?? {})
+    .filter(([, value]) => value?.signal && value.signal !== "HOLD")
+    .slice(0, 3)
+    .map(([key]) => INDICATOR_META[key]?.title || key);
 
-  return points
+  return {
+    systems,
+    dominantReason,
+    dominantDecision,
+    hasConflict,
+    disagreementCount,
+    topSignals,
+  };
+}
+
+function getGroupSummary(groupKey, indicators) {
+  switch (groupKey) {
+    case "trend": {
+      const adxValue = indicators.adx?.value;
+      const maSignal = normalizeDecisionLabel(indicators.moving_averages?.signal);
+      if (typeof adxValue === "number" && adxValue >= 25 && maSignal.includes("BUY")) {
+        return "Trend is bullish and strong";
+      }
+      if (typeof adxValue === "number" && adxValue >= 25 && maSignal.includes("SELL")) {
+        return "Trend is bearish and strong";
+      }
+      if (typeof adxValue === "number" && adxValue < 20) {
+        return "Trend strength is weak";
+      }
+      return "Trend signals are mixed";
+    }
+    case "momentum": {
+      const rsiValue = indicators.rsi?.value;
+      const stochasticValue = indicators.stochastic?.value;
+      if (typeof rsiValue === "number" && rsiValue >= 70) {
+        return "Momentum is overbought";
+      }
+      if (typeof rsiValue === "number" && rsiValue <= 30) {
+        return "Momentum is oversold";
+      }
+      if (typeof stochasticValue === "number" && stochasticValue >= 80) {
+        return "Momentum is stretched higher";
+      }
+      return "Momentum is balanced";
+    }
+    case "volatility":
+      return indicators.atr?.signal === "HIGH_RISK" ? "Volatility is elevated" : "Volatility is contained";
+    case "structure": {
+      const obvSignal = normalizeDecisionLabel(indicators.obv?.signal);
+      if (obvSignal.includes("BUY")) {
+        return "Structure is supported by volume";
+      }
+      if (obvSignal.includes("SELL")) {
+        return "Structure is weakening on volume";
+      }
+      return "Structure signals are balanced";
+    }
+    default:
+      return "Signal summary unavailable";
+  }
+}
+
+function buildContextualInsights({ technicalIndicators, indicatorScore, indicatorSummary, prediction }) {
+  const insights = [];
+  const adxValue = technicalIndicators.adx?.value;
+  const rsiValue = technicalIndicators.rsi?.value;
+
+  if (typeof adxValue === "number") {
+    if (adxValue >= 25) {
+      insights.push({ tone: "bullish", title: "Trend strength", text: `Market is trending strongly with ADX at ${formatNumber(adxValue)}.` });
+    } else if (adxValue < 20) {
+      insights.push({ tone: "neutral", title: "Trend strength", text: `Trend conviction is weak with ADX at ${formatNumber(adxValue)}.` });
+    }
+  }
+
+  if (typeof rsiValue === "number") {
+    if (rsiValue >= 70) {
+      insights.push({ tone: "bearish", title: "Momentum", text: `Overbought conditions are active with RSI at ${formatNumber(rsiValue)}.` });
+    } else if (rsiValue <= 30) {
+      insights.push({ tone: "bullish", title: "Momentum", text: `Oversold conditions are active with RSI at ${formatNumber(rsiValue)}.` });
+    }
+  }
+
+  if (technicalIndicators.atr?.signal === "HIGH_RISK" || indicatorScore?.breakdown?.volatility_adjustment < 1) {
+    insights.push({ tone: "bearish", title: "Volatility", text: "High volatility is reducing conviction and applying a penalty to the score." });
+  }
+
+  if ((indicatorSummary?.conflicting_signals ?? []).length > 0 || prediction?.debate?.agreement === false) {
+    insights.push({ tone: "bearish", title: "Signal conflict", text: "Model, technical, or agent signals are not fully aligned right now." });
+  }
+
+  if (prediction?.special_flags?.timeframe_alignment) {
+    insights.push({ tone: "bullish", title: "Timeframe alignment", text: "Short- and medium-term structure are aligned, which improves trust in the setup." });
+  }
+
+  return insights.slice(0, 4);
+}
+
+function buildPath(points, width, height, padding, globalMin, globalRange, isVolume = false) {
+  if (points.length < 2) {
+    return { d: "", area: "" };
+  }
+
+  const usableWidth = width - padding * 2;
+  const d = points
     .map((point, index) => {
       const x = padding + (index / (points.length - 1)) * usableWidth;
-      const y = height - padding - ((point.value - minValue) / range) * usableHeight;
+      const y = getYPosition(point.value, globalMin, globalRange, height, padding, isVolume);
       return `${index === 0 ? "M" : "L"}${x.toFixed(2)},${y.toFixed(2)}`;
     })
     .join(" ");
+
+  let area = "";
+  if (isVolume) {
+    area = `${d} L${width - padding},${height - padding} L${padding},${height - padding} Z`;
+  }
+
+  return { d, area };
 }
 
 function getChartBounds(series) {
@@ -266,8 +474,12 @@ function getXPosition(index, totalPoints, width, padding) {
   return padding + (index / (totalPoints - 1)) * usableWidth;
 }
 
-function getYPosition(value, minValue, range, height, padding) {
+function getYPosition(value, minValue, range, height, padding, isVolume = false) {
   const usableHeight = height - padding * 2;
+  if (isVolume) {
+    const volumeHeight = usableHeight * 0.25;
+    return height - padding - ((value - minValue) / range) * volumeHeight;
+  }
   return height - padding - ((value - minValue) / range) * usableHeight;
 }
 
@@ -294,6 +506,7 @@ function getNearestTooltipData(series, hoverX, width, padding) {
     .map((line) => ({
       label: line.label,
       point: line.points?.[nearestIndex] ?? null,
+      colorIndex: line.originalIndex,
     }))
     .filter((entry) => entry.point !== null);
 
@@ -307,17 +520,22 @@ function getNearestTooltipData(series, hoverX, width, padding) {
 function getReferenceLines(indicatorKey, minValue, maxValue) {
   const inRange = (value) => value >= minValue && value <= maxValue;
 
+  if (indicatorKey === "rsi") {
+    return [
+      { value: 70, label: "70", style: "overbought" },
+      { value: 50, label: "50", style: "baseline" },
+      { value: 30, label: "30", style: "oversold" },
+    ].filter((line) => inRange(line.value));
+  }
+  if (indicatorKey === "stochastic") {
+    return [
+      { value: 80, label: "80", style: "overbought" },
+      { value: 50, label: "50", style: "baseline" },
+      { value: 20, label: "20", style: "oversold" },
+    ].filter((line) => inRange(line.value));
+  }
+
   switch (indicatorKey) {
-    case "rsi":
-      return [
-        { value: 70, label: "70", style: "overbought" },
-        { value: 30, label: "30", style: "oversold" },
-      ].filter((line) => inRange(line.value));
-    case "stochastic":
-      return [
-        { value: 80, label: "80", style: "overbought" },
-        { value: 20, label: "20", style: "oversold" },
-      ].filter((line) => inRange(line.value));
     case "adx":
       return [
         { value: 25, label: "Trend 25", style: "trend" },
@@ -336,20 +554,67 @@ function IndicatorChart({ chart, indicatorKey }) {
   const width = 320;
   const height = 180;
   const padding = 20;
-  const series = chart?.series ?? [];
+  const rawSeries = chart?.series ?? [];
+  const seriesWithProps = useMemo(
+    () =>
+      rawSeries.map((line, index) => ({
+        ...line,
+        originalIndex: index,
+      })),
+    [rawSeries],
+  );
+
   const [hoverX, setHoverX] = useState(null);
-  const primarySeries = series.find((line) => (line.points ?? []).length > 0);
-  const totalPoints = primarySeries?.points?.length ?? 0;
-  const { minValue, maxValue, range } = useMemo(() => getChartBounds(series), [series]);
-  const tooltip = hoverX === null ? null : getNearestTooltipData(series, hoverX, width, padding);
-  const startDate = primarySeries?.points?.[0]?.date ?? "";
-  const endDate = primarySeries?.points?.[totalPoints - 1]?.date ?? "";
-  const midDate = primarySeries?.points?.[Math.floor(totalPoints / 2)]?.date ?? "";
-  const zeroY =
-    minValue <= 0 && maxValue >= 0
-      ? getYPosition(0, minValue, range, height, padding)
-      : null;
-  const hasData = series.some((line) => (line.points ?? []).length > 1);
+  const [hiddenSeries, setHiddenSeries] = useState(new Set(["Close"]));
+
+  const toggleSeries = (label) => {
+    setHiddenSeries((prev) => {
+      const next = new Set(prev);
+      if (next.has(label)) {
+        next.delete(label);
+      } else {
+        next.add(label);
+      }
+      return next;
+    });
+  };
+
+  const visibleSeries = useMemo(
+    () => seriesWithProps.filter((line) => !hiddenSeries.has(line.label)),
+    [seriesWithProps, hiddenSeries],
+  );
+
+  const timeSeries = seriesWithProps.find((line) => (line.points ?? []).length > 0);
+  const totalPoints = timeSeries?.points?.length ?? 0;
+
+  const { mainBounds, secBounds, volBounds, isPriceChart } = useMemo(() => {
+    const isPrice = ["moving_averages", "bollinger_bands", "fibonacci"].includes(indicatorKey);
+    const mainL = visibleSeries.filter((line) =>
+      isPrice ? line.label !== "Volume" : line.label !== "Close" && line.label !== "Candles" && line.label !== "Volume",
+    );
+    const secL = visibleSeries.filter((line) => (isPrice ? false : line.label === "Close" || line.label === "Candles"));
+    const volL = visibleSeries.filter((line) => line.label === "Volume");
+    return {
+      isPriceChart: isPrice,
+      mainBounds: getChartBounds(mainL),
+      secBounds: getChartBounds(secL),
+      volBounds: getChartBounds(volL),
+    };
+  }, [visibleSeries, indicatorKey]);
+
+  const getScale = (label) => {
+    if (label === "Volume") return { ...volBounds, isVolume: true };
+    if ((label === "Close" || label === "Candles") && !isPriceChart) return { ...secBounds, isVolume: false };
+    return { ...mainBounds, isVolume: false };
+  };
+
+  const { minValue, maxValue, range } = mainBounds;
+  const tooltip = hoverX === null ? null : getNearestTooltipData(visibleSeries, hoverX, width, padding);
+  const startDate = timeSeries?.points?.[0]?.date ?? "";
+  const endDate = timeSeries?.points?.[totalPoints - 1]?.date ?? "";
+  const midDate = timeSeries?.points?.[Math.floor(totalPoints / 2)]?.date ?? "";
+  const zeroY = minValue <= 0 && maxValue >= 0 ? getYPosition(0, minValue, range, height, padding) : null;
+  const hasData = seriesWithProps.some((line) => (line.points ?? []).length > 1);
   const referenceLines = getReferenceLines(indicatorKey, minValue, maxValue);
 
   if (!hasData) {
@@ -378,35 +643,91 @@ function IndicatorChart({ chart, indicatorKey }) {
           const y = getYPosition(line.value, minValue, range, height, padding);
           return (
             <g key={`${indicatorKey}-${line.value}`}>
-              <line
-                x1={padding}
-                y1={y}
-                x2={width - padding}
-                y2={y}
-                className={`chart-reference chart-reference-${line.style}`}
-              />
+              <line x1={padding} y1={y} x2={width - padding} y2={y} className={`chart-reference chart-reference-${line.style}`} />
               <text x={width - padding - 2} y={y - 4} textAnchor="end" className="chart-reference-label">
                 {line.label}
               </text>
             </g>
           );
         })}
-        {series.map((line, index) => {
-          const path = buildPath(line.points ?? [], width, height, padding);
-          if (!path) {
-            return null;
+        {visibleSeries.map((line) => {
+          const scale = getScale(line.label);
+          const { d, area } = buildPath(line.points ?? [], width, height, padding, scale.minValue, scale.range, scale.isVolume);
+          if (!d) return null;
+
+          const isClose = line.label === "Close";
+          const isCandles = line.label === "Candles";
+          const isVol = line.label === "Volume";
+          const isHistogram = line.label === "Histogram";
+
+          if (isCandles) {
+            return (
+              <g key={line.label}>
+                {line.points.map((pt, i) => {
+                  const x = padding + (i / (totalPoints - 1)) * (width - padding * 2);
+                  const yO = getYPosition(pt.open, scale.minValue, scale.range, height, padding, false);
+                  const yH = getYPosition(pt.high, scale.minValue, scale.range, height, padding, false);
+                  const yL = getYPosition(pt.low, scale.minValue, scale.range, height, padding, false);
+                  const yC = getYPosition(pt.close, scale.minValue, scale.range, height, padding, false);
+                  const isGreen = pt.close >= pt.open;
+                  const color = isGreen ? "var(--bullish)" : "var(--bearish)";
+                  const barW = Math.max(((width - padding * 2) / totalPoints) * 0.6, 1);
+                  return (
+                    <g key={pt.date || i}>
+                      <line x1={x} y1={yH} x2={x} y2={yL} stroke={color} strokeWidth="1" />
+                      <rect x={x - barW / 2} y={Math.min(yO, yC)} width={barW} height={Math.max(Math.abs(yO - yC), 1)} fill={color} />
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          }
+
+          if (isHistogram) {
+            return (
+              <g key={line.label}>
+                {line.points.map((pt, i) => {
+                  const x = padding + (i / (totalPoints - 1)) * (width - padding * 2);
+                  const baseY = getYPosition(0, scale.minValue, scale.range, height, padding, false);
+                  const y = getYPosition(pt.value, scale.minValue, scale.range, height, padding, false);
+                  const isPos = pt.value >= 0;
+                  const color = isPos ? "rgba(47, 111, 101, 0.5)" : "rgba(159, 63, 36, 0.5)";
+                  const barW = Math.max(((width - padding * 2) / totalPoints) * 0.8, 1);
+                  return <rect key={pt.date || i} x={x - barW / 2} y={Math.min(y, baseY)} width={barW} height={Math.max(Math.abs(y - baseY), 1)} fill={color} />;
+                })}
+              </g>
+            );
+          }
+
+          let strokeColor = CHART_COLORS[line.originalIndex % CHART_COLORS.length];
+          let strokeWidth = "3";
+          let strokeOpacity = 1;
+          let strokeDash = "none";
+
+          if (isClose) {
+            strokeColor = "#333333";
+            strokeWidth = "2";
+            strokeOpacity = 0.8;
+            strokeDash = "4 4";
+          } else if (isVol) {
+            strokeColor = "rgba(122, 90, 41, 0.45)";
+            strokeWidth = "1.5";
           }
 
           return (
-            <path
-              key={line.label}
-              d={path}
-              fill="none"
-              stroke={CHART_COLORS[index % CHART_COLORS.length]}
-              strokeWidth="3"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
+            <g key={line.label}>
+              {isVol && area && <path d={area} fill="rgba(122, 90, 41, 0.12)" stroke="none" />}
+              <path
+                d={d}
+                fill="none"
+                stroke={strokeColor}
+                strokeWidth={strokeWidth}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeDasharray={strokeDash}
+                opacity={strokeOpacity}
+              />
+            </g>
           );
         })}
         {tooltip && (
@@ -418,16 +739,25 @@ function IndicatorChart({ chart, indicatorKey }) {
               y2={height - padding}
               className="chart-cursor"
             />
-            {tooltip.entries.map((entry, index) => (
-              <circle
-                key={`${entry.label}-${entry.point.date}`}
-                cx={getXPosition(tooltip.index, totalPoints, width, padding)}
-                cy={getYPosition(entry.point.value, minValue, range, height, padding)}
-                r="3.5"
-                fill={CHART_COLORS[index % CHART_COLORS.length]}
-                className="chart-point"
-              />
-            ))}
+            {tooltip.entries.map((entry) => {
+              const scale = getScale(entry.label);
+              return (
+                <circle
+                  key={`${entry.label}-${entry.point.date}`}
+                  cx={getXPosition(tooltip.index, totalPoints, width, padding)}
+                  cy={getYPosition(entry.point.value, scale.minValue, scale.range, height, padding, scale.isVolume)}
+                  r="3.5"
+                  fill={
+                    entry.label === "Close" || entry.label === "Candles"
+                      ? "#333333"
+                      : entry.label === "Volume"
+                        ? "rgba(122, 90, 41, 0.8)"
+                        : CHART_COLORS[entry.colorIndex % CHART_COLORS.length]
+                  }
+                  className="chart-point"
+                />
+              );
+            })}
           </>
         )}
         <text x={padding} y={padding - 4} className="chart-label">
@@ -447,24 +777,57 @@ function IndicatorChart({ chart, indicatorKey }) {
       {tooltip && (
         <div className="chart-tooltip">
           <strong>{formatDateLabel(tooltip.date)}</strong>
-          {tooltip.entries.map((entry, index) => (
+          {tooltip.entries.map((entry) => (
             <span className="tooltip-row" key={`${entry.label}-${entry.point.date}`}>
               <span
                 className="legend-dot"
-                style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                style={{
+                  backgroundColor:
+                    entry.label === "Close" || entry.label === "Candles"
+                      ? "#333333"
+                      : entry.label === "Volume"
+                        ? "rgba(122, 90, 41, 0.8)"
+                        : CHART_COLORS[entry.colorIndex % CHART_COLORS.length],
+                }}
               />
-              {entry.label}: {formatNumber(entry.point.value, Math.abs(entry.point.value) < 10 ? 4 : 2)}
+              {entry.label}:{" "}
+              {entry.label === "Candles"
+                ? `O:${formatNumber(entry.point.open)} H:${formatNumber(entry.point.high)} L:${formatNumber(entry.point.low)} C:${formatNumber(entry.point.close)}`
+                : formatNumber(entry.point.value, Math.abs(entry.point.value) < 10 ? 4 : 2)}
             </span>
           ))}
         </div>
       )}
 
       <div className="chart-legend">
-        {series.map((line, index) => (
-          <span className="legend-item" key={line.label}>
-            <span className="legend-dot" style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }} />
+        {seriesWithProps.map((line) => (
+          <button
+            type="button"
+            className="legend-item"
+            key={line.label}
+            onClick={() => toggleSeries(line.label)}
+            style={{
+              opacity: hiddenSeries.has(line.label) ? 0.4 : 1,
+              border: "none",
+              background: "transparent",
+              cursor: "pointer",
+              padding: 0,
+              fontFamily: "inherit",
+            }}
+          >
+            <span
+              className="legend-dot"
+              style={{
+                backgroundColor:
+                  line.label === "Close" || line.label === "Candles"
+                    ? "#333333"
+                    : line.label === "Volume"
+                      ? "rgba(122, 90, 41, 0.8)"
+                      : CHART_COLORS[line.originalIndex % CHART_COLORS.length],
+              }}
+            />
             {line.label}
-          </span>
+          </button>
         ))}
       </div>
     </div>
@@ -473,16 +836,35 @@ function IndicatorChart({ chart, indicatorKey }) {
 
 function IndicatorInfo({ title, blurb, explanation }) {
   const [open, setOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function handleEvent(event) {
+      if (event.type === "keydown" && event.key === "Escape") {
+        setOpen(false);
+      } else if (event.type !== "keydown" && containerRef.current && !containerRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleEvent);
+    document.addEventListener("touchstart", handleEvent);
+    document.addEventListener("keydown", handleEvent);
+
+    return () => {
+      document.removeEventListener("mousedown", handleEvent);
+      document.removeEventListener("touchstart", handleEvent);
+      document.removeEventListener("keydown", handleEvent);
+    };
+  }, [open]);
 
   return (
-    <div className="indicator-info">
-      <button
-        type="button"
-        className="info-button"
-        aria-expanded={open}
-        aria-label={`What ${title} means`}
-        onClick={() => setOpen((current) => !current)}
-      >
+    <div className="indicator-info" ref={containerRef}>
+      <button type="button" className="info-button" aria-expanded={open} aria-label={`What ${title} means`} onClick={() => setOpen((current) => !current)}>
         i
       </button>
       {open && (
@@ -505,11 +887,15 @@ function App() {
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [expandedGroups, setExpandedGroups] = useState(
+    INDICATOR_GROUPS.reduce((acc, group, index) => {
+      acc[group.key] = index === 0;
+      return acc;
+    }, {}),
+  );
+
   const hasDashboardData =
-    dashboard.price !== null ||
-    dashboard.sentiment !== null ||
-    dashboard.prediction !== null ||
-    dashboard.history.length > 0;
+    dashboard.price !== null || dashboard.sentiment !== null || dashboard.prediction !== null || dashboard.history.length > 0;
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -571,232 +957,590 @@ function App() {
     return () => abortController.abort();
   }, []);
 
-  const indicatorSummary = dashboard.prediction?.indicator_summary ?? { bullish: 0, bearish: 0, neutral: 0 };
+  const indicatorSummary = dashboard.prediction?.indicator_summary ?? {
+    bullish: 0,
+    bearish: 0,
+    neutral: 0,
+    conflicting_signals: [],
+  };
+  const indicatorScore = dashboard.prediction?.indicator_score ?? {
+    score: 0,
+    signal: "HOLD",
+    confidence: 0,
+    breakdown: { trend: 0, momentum: 0, volatility_adjustment: 1.0, structure: 0 },
+  };
   const technicalIndicators = dashboard.prediction?.technical_indicators ?? {};
   const indicatorCharts = dashboard.prediction?.indicator_charts ?? {};
+  const newsArticles = dashboard.sentiment?.articles || [];
+
+  const strongestSignals = useMemo(() => {
+    if (!technicalIndicators || Object.keys(technicalIndicators).length === 0) return [];
+    const sorted = Object.entries(technicalIndicators)
+      .filter(([, value]) => value.signal && value.signal !== "HOLD")
+      .sort((a, b) => {
+        const weightA = a[1].signal.includes("STRONG") ? 2 : 1;
+        const weightB = b[1].signal.includes("STRONG") ? 2 : 1;
+        return weightB - weightA;
+      });
+    return sorted.slice(0, 3);
+  }, [technicalIndicators]);
+
+  const groupedIndicators = useMemo(
+    () =>
+      INDICATOR_GROUPS.map((group) => ({
+        ...group,
+        summary: getGroupSummary(
+          group.key,
+          group.indicators.reduce((acc, key) => {
+            acc[key] = technicalIndicators[key];
+            return acc;
+          }, {}),
+        ),
+        items: group.indicators
+          .map((key) => ({
+            key,
+            indicator: technicalIndicators[key],
+            chart: indicatorCharts[key],
+            title: INDICATOR_META[key]?.title || key,
+            blurb: INDICATOR_META[key]?.blurb || "Technical context for this indicator.",
+          }))
+          .filter((item) => item.indicator || item.chart),
+      })),
+    [technicalIndicators, indicatorCharts],
+  );
+
+  const confidenceState = getConfidenceBucket(dashboard.prediction?.confidence ?? indicatorScore.confidence);
+  const scoreState = getScoreZone(indicatorScore.score);
+  const decisionDrivers = useMemo(
+    () =>
+      buildDecisionDrivers({
+        prediction: dashboard.prediction,
+        indicatorScore,
+        indicatorSummary,
+        technicalIndicators,
+      }),
+    [dashboard.prediction, indicatorScore, indicatorSummary, technicalIndicators],
+  );
+  const contextualInsights = useMemo(
+    () =>
+      buildContextualInsights({
+        technicalIndicators,
+        indicatorScore,
+        indicatorSummary,
+        prediction: dashboard.prediction,
+      }),
+    [technicalIndicators, indicatorScore, indicatorSummary, dashboard.prediction],
+  );
+  const topReasons = (dashboard.prediction?.final_analysis ?? []).slice(0, 3);
+
+  function toggleGroup(groupKey) {
+    setExpandedGroups((current) => ({
+      ...current,
+      [groupKey]: !current[groupKey],
+    }));
+  }
 
   return (
-    <main className="app-shell">
-      <section className="hero">
-        <div className="hero-brand">
-          <img className="hero-logo" src="/goldhelm-logo.png" alt="GoldHelm AI logo" />
-          <div className="hero-copy">
-            <p className="eyebrow">GoldHelm AI</p>
-            <h1>Gold intelligence with explainable next-day forecasts.</h1>
-            <p className="hero-text">
-              Track the latest futures close, view recent history, inspect the model&apos;s next-session prediction,
-              and review the full technical indicator stack in one place.
-            </p>
+    <>
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          padding: "16px 32px",
+          background: "rgba(251, 248, 241, 0.85)",
+          backdropFilter: "blur(16px)",
+          borderBottom: "1px solid rgba(122, 90, 41, 0.15)",
+          position: "sticky",
+          top: 0,
+          zIndex: 100,
+        }}
+      >
+        <img src="/goldhelm-logo.png" alt="GoldHelm AI" style={{ height: "28px", width: "auto", marginRight: "12px", borderRadius: "6px" }} />
+        <span style={{ fontSize: "1.1rem", fontWeight: "700", letterSpacing: "-0.3px", color: "var(--text)" }}>GoldHelm AI</span>
+      </header>
+
+      <main className="app-shell" style={{ paddingTop: "24px" }}>
+        <section className="hero compact-hero" style={{ paddingTop: "12px", paddingBottom: "24px" }}>
+          <div className="hero-brand" style={{ display: "block" }}>
+            <div className="hero-copy">
+              <p className="eyebrow">Trading Intelligence Dashboard</p>
+              <h1>Explainable gold signals for the next trading session.</h1>
+              <p className="hero-text">
+                Decision, confidence, disagreement, and market context are surfaced first so the dashboard reads like a
+                trading system, not just a model output page.
+              </p>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {loading && <p className="status">Loading market data...</p>}
-      {error && <p className="error">{error}</p>}
+        {loading && <p className="status">Loading market data...</p>}
+        {error && <p className="error">{error}</p>}
 
-      {!loading && hasDashboardData && (
-        <>
-          <section className="cards cards-wide">
-            <article className="card primary-card">
-              <p className="card-label">Current Close</p>
-              <h2>{formatCurrency(dashboard.price?.price)}</h2>
-              <p className="card-meta">
-                {dashboard.price?.ticker} as of {dashboard.price?.date}
-              </p>
-            </article>
+        {!loading && hasDashboardData && (
+          <>
+            <section className="decision-cockpit">
+              <div className="decision-main">
+                <div>
+                  <p className="card-label">Final Decision</p>
+                  <div className="decision-headline">
+                    <h2 className={`decision-call tone-${getSignalTone(dashboard.prediction?.decision)}`}>{dashboard.prediction?.decision || "HOLD"}</h2>
+                    {decisionDrivers.hasConflict && <span className="warning-badge">Conflicting signals</span>}
+                  </div>
+                  <p className="decision-subtitle">{dashboard.prediction?.final_analysis?.[0] || "Awaiting coordinator rationale."}</p>
+                </div>
 
-            <article className="card">
-              <p className="card-label">Next-Day Forecast</p>
-              <h2>{formatCurrency(dashboard.prediction?.prediction)}</h2>
-              <p className="card-meta">
-                Current: {formatCurrency(dashboard.prediction?.current_price || dashboard.price?.price)}
-              </p>
-              <p className="card-meta">Expected move: {dashboard.prediction?.predicted_change_pct?.toFixed(3)}%</p>
-            </article>
+                <div className="cockpit-chips">
+                  <span className={`metric-chip tone-${confidenceState.tone}`}>{confidenceState.label}</span>
+                  <span className={`metric-chip tone-${scoreState.tone}`}>{scoreState.label}</span>
+                  <span className={`metric-chip tone-${getRiskTone(dashboard.prediction?.risk_level)}`}>Risk {dashboard.prediction?.risk_level || "low"}</span>
+                </div>
 
-            <article className="card">
-              <p className="card-label">Model Quality</p>
-              <h2>{formatPercent((dashboard.prediction?.confidence ?? NaN) * 100)}</h2>
-              <p className="card-meta">Validation MAE: {formatCurrency(dashboard.prediction?.validation_mae)}</p>
-              <p className="card-meta">Risk: {(dashboard.prediction?.risk_level || "low").toUpperCase()}</p>
-            </article>
-
-            <article className="card">
-              <p className="card-label">Market Sentiment</p>
-              <h2 className="sentiment-label">{dashboard.sentiment?.label || dashboard.prediction?.sentiment?.label || "Neutral"}</h2>
-              <p className="card-meta">
-                Score:{" "}
-                {typeof (dashboard.sentiment?.score ?? dashboard.prediction?.sentiment?.score) === "number"
-                  ? (dashboard.sentiment?.score ?? dashboard.prediction?.sentiment?.score).toFixed(3)
-                  : "N/A"}
-              </p>
-            </article>
-
-            <article className="card decision-card">
-              <p className="card-label">Final Decision</p>
-              <h2 className="decision-label">{dashboard.prediction?.decision || "HOLD"}</h2>
-              <p className="card-meta">Combined confidence: {formatPercent((dashboard.prediction?.confidence ?? NaN) * 100)}</p>
-              <p className="card-meta">RL suggestion: {dashboard.prediction?.rl_decision || "Unavailable"}</p>
-            </article>
-          </section>
-
-          <section className="insight-panel">
-            <div className="section-heading">
-              <h3>Final Analysis</h3>
-              <p>Coordinator output combining reasoning, reinforcement learning, and technical structure.</p>
-            </div>
-
-            <div className="explanation-list">
-              {(dashboard.prediction?.final_analysis ?? []).length > 0 ? (
-                dashboard.prediction.final_analysis.map((reason) => (
-                  <article className="explanation-row" key={reason}>
-                    {reason}
+                <div className="decision-stats">
+                  <article className="decision-stat">
+                    <span className="card-label">Expected Move</span>
+                    <strong>{formatPercent(dashboard.prediction?.predicted_change_pct)}</strong>
                   </article>
-                ))
-              ) : (
-                <article className="explanation-row">Final analysis will appear when the prediction endpoint provides it.</article>
-              )}
-            </div>
-          </section>
+                  <article className="decision-stat">
+                    <span className="card-label">Forecast Price</span>
+                    <strong>{formatCurrency(dashboard.prediction?.prediction)}</strong>
+                  </article>
+                  <article className="decision-stat">
+                    <span className="card-label">Current Price</span>
+                    <strong>{formatCurrency(dashboard.prediction?.current_price || dashboard.price?.price)}</strong>
+                  </article>
+                  <article className="decision-stat">
+                    <span className="card-label">Horizon</span>
+                    <strong>Next trading day</strong>
+                  </article>
+                  <article className="decision-stat">
+                    <span className="card-label">Sentiment Updated</span>
+                    <strong>{formatDateTimeLabel(dashboard.sentiment?.updated_at)}</strong>
+                  </article>
+                </div>
+              </div>
 
-          <section className="indicator-panel">
-            <div className="section-heading">
-              <h3>Technical Indicator Stack</h3>
-              <p>Ten charted indicators computed from the latest OHLCV history in the backend.</p>
-            </div>
-
-            <div className="summary-strip">
-              <article className="summary-chip bullish-chip">
-                <span className="chip-label">Bullish</span>
-                <strong>{indicatorSummary.bullish}</strong>
-              </article>
-              <article className="summary-chip bearish-chip">
-                <span className="chip-label">Bearish</span>
-                <strong>{indicatorSummary.bearish}</strong>
-              </article>
-              <article className="summary-chip neutral-chip">
-                <span className="chip-label">Neutral</span>
-                <strong>{indicatorSummary.neutral}</strong>
-              </article>
-            </div>
-
-            <div className="indicator-grid">
-              {INDICATOR_ORDER.map((key) => {
-                const indicator = technicalIndicators[key];
-                const chart = indicatorCharts[key];
-                const title = INDICATOR_META[key]?.title || key;
-                const blurb = INDICATOR_META[key]?.blurb || "Technical context for this indicator.";
-                const signal = indicator?.signal || "HOLD";
-                const explanation = explainIndicator(key, indicator);
-
-                return (
-                  <article className="indicator-card" key={key}>
-                    <div className="indicator-header">
-                      <div className="indicator-heading">
-                        <div>
-                        <p className="card-label">{title}</p>
-                        <p className="indicator-meta">{summarizeIndicator(key, indicator)}</p>
-                        </div>
-                        <IndicatorInfo title={title} blurb={blurb} explanation={explanation} />
-                      </div>
-                      <span className={`signal-pill signal-${signal.toLowerCase().replace(/_/g, "-")}`}>
-                        {signal}
-                      </span>
+              <div className="decision-side">
+                <div className="score-panel">
+                  <div className="score-panel-header">
+                    <div>
+                      <p className="card-label">Confidence + Score</p>
+                      <strong className={`score-reading tone-${scoreState.tone}`}>{indicatorScore.signal} ({formatNumber(indicatorScore.score)})</strong>
                     </div>
-                    <IndicatorChart chart={chart} indicatorKey={key} />
+                    <div className="score-confidence">{formatPercent((dashboard.prediction?.confidence ?? indicatorScore.confidence) * 100)}</div>
+                  </div>
+
+                  <div className="score-gauge">
+                    <div className="score-gauge-track">
+                      <div className="score-zero-marker" />
+                      <div
+                        className="score-gauge-thumb"
+                        style={{ left: `calc(${Math.max(0, Math.min(100, (indicatorScore.score + 100) / 2))}% - 7px)` }}
+                      />
+                    </div>
+                    <div className="score-zone-labels">
+                      <span>Strong Sell</span>
+                      <span>Sell</span>
+                      <span>Neutral</span>
+                      <span>Buy</span>
+                      <span>Strong Buy</span>
+                    </div>
+                  </div>
+
+                  <p className="card-meta">
+                    Trend {indicatorScore.breakdown.trend.toFixed(1)} | Momentum {indicatorScore.breakdown.momentum.toFixed(1)} | Structure{" "}
+                    {indicatorScore.breakdown.structure.toFixed(1)}
+                  </p>
+                  {indicatorScore.breakdown.volatility_adjustment < 1.0 && <p className="score-warning">Volatility penalty active due to elevated ATR.</p>}
+                </div>
+              </div>
+            </section>
+
+            <section className="trust-grid">
+              <article className="trust-card">
+                <div className="section-heading compact-heading">
+                  <div>
+                    <h3>Why This Call</h3>
+                    <p>Top drivers behind the coordinator decision.</p>
+                  </div>
+                </div>
+                <div className="explanation-list compact-list">
+                  {topReasons.length > 0 ? (
+                    topReasons.map((reason) => (
+                      <article className="explanation-row" key={reason}>
+                        {reason}
+                      </article>
+                    ))
+                  ) : (
+                    <article className="explanation-row">Reasoning detail is not available yet.</article>
+                  )}
+                </div>
+              </article>
+
+              <article className="trust-card">
+                <div className="section-heading compact-heading">
+                  <div>
+                    <h3>Decision Source</h3>
+                    <p>{decisionDrivers.dominantReason}</p>
+                  </div>
+                </div>
+                <div className="system-grid">
+                  {decisionDrivers.systems.map((system) => (
+                    <div className="system-chip" key={system.label}>
+                      <span className="chip-label">{system.label}</span>
+                      <strong className={`tone-${getSignalTone(system.decision)}`}>{system.decision}</strong>
+                      <span className="system-meta">{typeof system.confidence === "number" ? formatPercent(system.confidence * 100) : "No confidence"}</span>
+                    </div>
+                  ))}
+                </div>
+              </article>
+            </section>
+
+            {contextualInsights.length > 0 && (
+              <section className="insight-ribbon">
+                {contextualInsights.map((insight) => (
+                  <article className={`insight-chip tone-${insight.tone}`} key={insight.title}>
+                    <span className="chip-label">{insight.title}</span>
+                    <strong>{insight.text}</strong>
                   </article>
-                );
-              })}
-            </div>
-          </section>
+                ))}
+              </section>
+            )}
 
-          <section className="debate-panel">
-            <div className="section-heading">
-              <h3>Agent Debate</h3>
-              <p>Reasoning agent and RL policy compared before the final decision is set.</p>
-            </div>
-
-            <div className="debate-grid">
-              <article className="debate-card">
-                <p className="card-label">Reasoning Agent</p>
-                <h4>{dashboard.prediction?.debate?.reasoning_agent?.decision || "N/A"}</h4>
-                <p className="card-meta">Confidence: {formatPercent((dashboard.prediction?.debate?.reasoning_agent?.confidence ?? NaN) * 100)}</p>
+            <section className="cards cards-wide metrics-row" style={{ marginTop: 0 }}>
+              <article className="card primary-card">
+                <p className="card-label">Current Close</p>
+                <h2 style={{ fontSize: "clamp(1.4rem, 2vw, 1.8rem)", whiteSpace: "nowrap", letterSpacing: "-0.5px" }}>{formatCurrency(dashboard.price?.price)}</h2>
+                <p className="card-meta">
+                  {dashboard.price?.ticker} as of {dashboard.price?.date}
+                </p>
               </article>
 
-              <article className="debate-card">
-                <p className="card-label">RL Agent</p>
-                <h4>{dashboard.prediction?.debate?.rl_agent?.decision || "N/A"}</h4>
-                <p className="card-meta">Confidence: {formatPercent((dashboard.prediction?.debate?.rl_agent?.confidence ?? NaN) * 100)}</p>
-                <p className="card-meta">Policy: {dashboard.prediction?.debate?.policy_source || "Unavailable"}</p>
+              <article className="card">
+                <p className="card-label">Next-Day Forecast</p>
+                <h2 style={{ fontSize: "clamp(1.4rem, 2vw, 1.8rem)", whiteSpace: "nowrap", letterSpacing: "-0.5px" }}>{formatCurrency(dashboard.prediction?.prediction)}</h2>
+                <p className="card-meta">Current: {formatCurrency(dashboard.prediction?.current_price || dashboard.price?.price)}</p>
+                <p className="card-meta">Expected move: {formatPercent(dashboard.prediction?.predicted_change_pct)}</p>
               </article>
 
-              <article className="debate-card">
-                <p className="card-label">Agreement</p>
-                <h4>{dashboard.prediction?.debate?.agreement ? "Aligned" : "Mixed"}</h4>
-                <p className="card-meta">Coordinator resolves disagreements by defaulting to caution.</p>
+              <article className="card">
+                <p className="card-label">Model Confidence</p>
+                <h2 style={{ fontSize: "clamp(1.4rem, 2vw, 1.8rem)", whiteSpace: "nowrap", letterSpacing: "-0.5px" }}>{formatPercent((dashboard.prediction?.confidence ?? NaN) * 100)}</h2>
+                <p className="card-meta">Validation MAE: {formatCurrency(dashboard.prediction?.validation_mae)}</p>
+                <p className="card-meta">State: {confidenceState.label}</p>
               </article>
-            </div>
-          </section>
 
-          <section className="backtest-panel">
-            <div className="section-heading">
-              <h3>RL Backtest</h3>
-              <p>Offline policy evaluation from the trained trading environment.</p>
-            </div>
+              <article className="card">
+                <p className="card-label">Market Sentiment</p>
+                <h2 className="sentiment-label" style={{ fontSize: "clamp(1.4rem, 2vw, 1.8rem)", whiteSpace: "nowrap", letterSpacing: "-0.5px" }}>
+                  {dashboard.sentiment?.label || dashboard.prediction?.sentiment?.label || "Neutral"}
+                </h2>
+                <p className="card-meta">
+                  Score:{" "}
+                  {typeof (dashboard.sentiment?.score ?? dashboard.prediction?.sentiment?.score) === "number"
+                    ? (dashboard.sentiment?.score ?? dashboard.prediction?.sentiment?.score).toFixed(3)
+                    : "N/A"}
+                </p>
+                <p className="card-meta">Updated: {formatDateTimeLabel(dashboard.sentiment?.updated_at)}</p>
+              </article>
 
-            <div className="backtest-grid backtest-grid-extended">
-              <article className="backtest-card">
-                <p className="card-label">Total Return</p>
-                <h4>{formatPercent((dashboard.prediction?.backtest?.total_return ?? NaN) * 100)}</h4>
+              <article className="card decision-card">
+                <p className="card-label">Signal Agreement</p>
+                <h2
+                  className="decision-label"
+                  style={{
+                    color: decisionDrivers.hasConflict ? "var(--bearish)" : "var(--bullish)",
+                    fontSize: "clamp(1.4rem, 2vw, 1.8rem)",
+                    whiteSpace: "nowrap",
+                    letterSpacing: "-0.5px",
+                  }}
+                >
+                  {decisionDrivers.hasConflict ? "Mixed" : "Aligned"}
+                </h2>
+                <p className="card-meta">{decisionDrivers.dominantReason}</p>
+                <p className="card-meta">Disagreement points: {decisionDrivers.disagreementCount}</p>
               </article>
-              <article className="backtest-card">
-                <p className="card-label">Trades</p>
-                <h4>{formatTradeCount(dashboard.prediction?.backtest?.number_of_trades)}</h4>
-              </article>
-              <article className="backtest-card">
-                <p className="card-label">Win Rate</p>
-                <h4>{formatPercent((dashboard.prediction?.backtest?.win_rate ?? NaN) * 100)}</h4>
-              </article>
-              <article className="backtest-card">
-                <p className="card-label">Sharpe Ratio</p>
-                <h4>{formatNumber(dashboard.prediction?.backtest?.sharpe_ratio)}</h4>
-              </article>
-              <article className="backtest-card">
-                <p className="card-label">Max Drawdown</p>
-                <h4>{formatPercent((dashboard.prediction?.backtest?.max_drawdown ?? NaN) * 100)}</h4>
-              </article>
-              <article className="backtest-card">
-                <p className="card-label">Final Portfolio</p>
-                <h4>{formatCurrency(dashboard.prediction?.backtest?.final_portfolio_value)}</h4>
-              </article>
-            </div>
-          </section>
+            </section>
 
-          <section className="history-panel">
-            <div className="section-heading">
-              <h3>Recent closes</h3>
-              <p>Latest five trading sessions from the backend history feed.</p>
-            </div>
+            <section className="debate-panel">
+              <div className="section-heading">
+                <h3>Agent Agreement</h3>
+                <p>Who agrees, who disagrees, and whether the coordinator is overriding the bias.</p>
+              </div>
 
-            <div className="history-list">
-              {dashboard.history.length > 0 ? (
-                dashboard.history.map((item) => (
-                  <article className="history-row" key={item.date}>
-                    <span>{item.date}</span>
-                    <strong>{formatCurrency(item.close)}</strong>
-                  </article>
-                ))
-              ) : (
-                <article className="history-row">
-                  <span>History unavailable</span>
-                  <strong>Retrying backend feed</strong>
+              <div className="debate-grid">
+                <article className="debate-card">
+                  <p className="card-label">Reasoning Agent</p>
+                  <h4>{dashboard.prediction?.debate?.reasoning_agent?.decision || "N/A"}</h4>
+                  <p className="card-meta">Confidence: {formatPercent((dashboard.prediction?.debate?.reasoning_agent?.confidence ?? NaN) * 100)}</p>
                 </article>
+
+                <article className="debate-card">
+                  <p className="card-label">RL Agent</p>
+                  <h4>{dashboard.prediction?.debate?.rl_agent?.decision || "N/A"}</h4>
+                  <p className="card-meta">Confidence: {formatPercent((dashboard.prediction?.debate?.rl_agent?.confidence ?? NaN) * 100)}</p>
+                  <p className="card-meta">Policy: {dashboard.prediction?.debate?.policy_source || "Unavailable"}</p>
+                </article>
+
+                <article className="debate-card">
+                  <p className="card-label">Coordinator</p>
+                  <h4>{dashboard.prediction?.decision || "N/A"}</h4>
+                  <p className="card-meta">{decisionDrivers.dominantReason}</p>
+                  <p className="card-meta">Agreement: {dashboard.prediction?.debate?.agreement ? "Aligned" : "Mixed"}</p>
+                </article>
+              </div>
+            </section>
+
+            <section className="indicator-panel">
+              <div className="section-heading">
+                <h3>Technical Indicator Stack</h3>
+                <p>Grouped into trading-relevant categories so the signal reads faster.</p>
+              </div>
+
+              <div style={{ marginBottom: "24px", background: "var(--panel)", border: "1px solid var(--border)", borderRadius: "12px", padding: "16px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px", flexWrap: "wrap", gap: "8px" }}>
+                  <strong style={{ fontSize: "0.95rem" }}>Technical Consensus Breakdown</strong>
+                  <span style={{ fontSize: "0.85rem", fontWeight: 600 }}>
+                    {indicatorSummary.bullish} Bullish &nbsp;•&nbsp; {indicatorSummary.neutral} Neutral &nbsp;•&nbsp; {indicatorSummary.bearish} Bearish
+                  </span>
+                </div>
+                <div style={{ display: "flex", width: "100%", height: "12px", borderRadius: "6px", overflow: "hidden" }}>
+                  <div style={{ width: `${(indicatorSummary.bearish / 10) * 100}%`, background: "var(--bearish)" }} />
+                  <div style={{ width: `${(indicatorSummary.neutral / 10) * 100}%`, background: "var(--neutral)" }} />
+                  <div style={{ width: `${(indicatorSummary.bullish / 10) * 100}%`, background: "var(--bullish)" }} />
+                </div>
+              </div>
+
+              {strongestSignals.length > 0 && (
+                <div style={{ marginBottom: "24px", background: "rgba(47, 111, 101, 0.05)", border: "1px solid rgba(47, 111, 101, 0.2)", borderRadius: "12px", padding: "16px" }}>
+                  <p className="card-label" style={{ color: "var(--bullish)" }}>Strongest Driving Signals</p>
+                  <div style={{ display: "flex", gap: "16px", marginTop: "12px", flexWrap: "wrap" }}>
+                    {strongestSignals.map(([key, indicator]) => (
+                      <div key={key} style={{ flex: 1, minWidth: "180px", padding: "12px", borderRadius: "8px", background: "var(--panel)", border: "1px solid var(--border)" }}>
+                        <strong>{INDICATOR_META[key]?.title || key}</strong>
+                        <span
+                          style={{
+                            display: "block",
+                            color: indicator.signal.includes("BUY") ? "var(--bullish)" : indicator.signal.includes("SELL") ? "var(--bearish)" : "var(--neutral)",
+                            fontSize: "0.9rem",
+                            fontWeight: "bold",
+                            marginTop: "4px",
+                          }}
+                        >
+                          {indicator.signal}
+                        </span>
+                        <p style={{ fontSize: "0.85rem", margin: "4px 0 0 0", color: "#666" }}>{summarizeIndicator(key, indicator)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               )}
-            </div>
-          </section>
-        </>
-      )}
-    </main>
+
+              <div style={{ marginBottom: 24, padding: "16px 20px", borderRadius: 16, background: "rgba(255, 250, 240, 0.9)", border: "1px solid rgba(122, 90, 41, 0.15)" }}>
+                <p className="card-label">Technical Scoring Engine</p>
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  <div style={{ flex: 1, height: 8, borderRadius: 4, background: "linear-gradient(90deg, var(--bearish) 0%, var(--neutral) 50%, var(--bullish) 100%)", position: "relative" }}>
+                    <div style={{ position: "absolute", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.7)", left: "20%" }} title="Strong Sell / Sell" />
+                    <div style={{ position: "absolute", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.7)", left: "40%" }} title="Sell / Hold" />
+                    <div style={{ position: "absolute", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.7)", left: "60%" }} title="Hold / Buy" />
+                    <div style={{ position: "absolute", top: 0, bottom: 0, width: 2, background: "rgba(255,255,255,0.7)", left: "80%" }} title="Buy / Strong Buy" />
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: -8,
+                        bottom: -8,
+                        width: 8,
+                        background: "#fff",
+                        border: "2px solid #333",
+                        borderRadius: 4,
+                        left: `calc(${Math.max(0, Math.min(100, (indicatorScore.score + 100) / 2))}% - 4px)`,
+                        transition: "left 0.4s ease-out",
+                        zIndex: 10,
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.2)",
+                      }}
+                    />
+                  </div>
+                  <strong
+                    style={{
+                      fontSize: "1.2rem",
+                      color: indicatorScore.signal.includes("BUY") ? "var(--bullish)" : indicatorScore.signal.includes("SELL") ? "var(--bearish)" : "var(--neutral)",
+                      minWidth: "180px",
+                      textAlign: "right",
+                    }}
+                  >
+                    {indicatorScore.signal} ({formatNumber(indicatorScore.score)})
+                  </strong>
+                </div>
+                <p className="card-meta" style={{ marginTop: 8 }}>
+                  Breakdown: Trend {indicatorScore.breakdown.trend.toFixed(1)} | Momentum {indicatorScore.breakdown.momentum.toFixed(1)} | Structure{" "}
+                  {indicatorScore.breakdown.structure.toFixed(1)} | Score Confidence: {formatPercent(indicatorScore.confidence * 100)}
+                </p>
+                {indicatorScore.breakdown.volatility_adjustment < 1.0 && (
+                  <div style={{ marginTop: 8 }}>
+                    <span style={{ background: "#9f3f24", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: "bold" }}>
+                      ATR HIGH VOLATILITY PENALTY APPLIED
+                    </span>
+                  </div>
+                )}
+                {indicatorSummary.conflicting_signals && indicatorSummary.conflicting_signals.length > 0 && (
+                  <div style={{ marginTop: 12, padding: "12px", background: "rgba(159, 63, 36, 0.05)", borderRadius: 8, border: "1px solid rgba(159, 63, 36, 0.2)" }}>
+                    <strong style={{ color: "var(--bearish)", fontSize: "0.9rem" }}>Conflicting Signals Detected:</strong>
+                    <ul style={{ margin: "4px 0 0 0", paddingLeft: 20, fontSize: "0.85rem", color: "#666" }}>
+                      {indicatorSummary.conflicting_signals.map((signal) => (
+                        <li key={signal}>{signal}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+
+              {dashboard.prediction?.special_flags && Object.values(dashboard.prediction.special_flags).some((value) => value) && (
+                <div style={{ marginTop: 12, display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 24 }}>
+                  {dashboard.prediction.special_flags.falling_knife && <span style={{ background: "#9f3f24", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: "bold" }}>FALLING KNIFE</span>}
+                  {dashboard.prediction.special_flags.dead_cat_bounce && <span style={{ background: "#9f3f24", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: "bold" }}>DEAD CAT BOUNCE</span>}
+                  {dashboard.prediction.special_flags.timeframe_alignment && <span style={{ background: "#2f6f65", color: "#fff", padding: "4px 8px", borderRadius: 4, fontSize: "0.75rem", fontWeight: "bold" }}>TIMEFRAME ALIGNED (1D/1W)</span>}
+                </div>
+              )}
+
+              <div className="grouped-indicators">
+                {groupedIndicators.map((group) => (
+                  <section className="indicator-group" key={group.key}>
+                    <button type="button" className="indicator-group-header" onClick={() => toggleGroup(group.key)}>
+                      <div>
+                        <p className="card-label">{group.summaryTitle}</p>
+                        <h4>{group.title}</h4>
+                        <p className="indicator-meta">{group.summary}</p>
+                      </div>
+                      <span className="group-toggle">{expandedGroups[group.key] ? "Hide detail" : "Show detail"}</span>
+                    </button>
+
+                    <div className="group-signal-row">
+                      {group.items.slice(0, 3).map((item) => (
+                        <div className="group-signal-card" key={`${group.key}-${item.key}`}>
+                          <span className="chip-label">{item.title}</span>
+                          <strong className={`tone-${getSignalTone(item.indicator?.signal)}`}>{item.indicator?.signal || "HOLD"}</strong>
+                          <span className="system-meta">{summarizeIndicator(item.key, item.indicator)}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {expandedGroups[group.key] && (
+                      <div className="indicator-grid">
+                        {group.items.map((item) => {
+                          const signal = item.indicator?.signal || "HOLD";
+                          const explanation = explainIndicator(item.key, item.indicator);
+
+                          return (
+                            <article className="indicator-card" key={item.key}>
+                              <div className="indicator-header">
+                                <div className="indicator-heading">
+                                  <div>
+                                    <p className="card-label">{item.title}</p>
+                                    <p className="indicator-meta">{summarizeIndicator(item.key, item.indicator)}</p>
+                                  </div>
+                                  <IndicatorInfo title={item.title} blurb={item.blurb} explanation={explanation} />
+                                </div>
+                                <span className={`signal-pill signal-${signal.toLowerCase().replace(/_/g, "-")}`}>{signal}</span>
+                              </div>
+                              <IndicatorChart chart={item.chart} indicatorKey={item.key} />
+                            </article>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </section>
+                ))}
+              </div>
+            </section>
+
+            <section className="backtest-panel">
+              <div className="section-heading">
+                <h3>System Trust</h3>
+                <p>Compact backtest metrics focused on risk-adjusted credibility.</p>
+              </div>
+
+              <div className="backtest-grid backtest-grid-extended">
+                <article className="backtest-card">
+                  <p className="card-label">Sharpe Ratio</p>
+                  <h4>{formatNumber(dashboard.prediction?.backtest?.sharpe_ratio)}</h4>
+                </article>
+                <article className="backtest-card">
+                  <p className="card-label">Win Rate</p>
+                  <h4>{formatPercent((dashboard.prediction?.backtest?.win_rate ?? NaN) * 100)}</h4>
+                </article>
+                <article className="backtest-card">
+                  <p className="card-label">Max Drawdown</p>
+                  <h4>{formatPercent((dashboard.prediction?.backtest?.max_drawdown ?? NaN) * 100)}</h4>
+                </article>
+                <article className="backtest-card">
+                  <p className="card-label">Total Return</p>
+                  <h4>{formatPercent((dashboard.prediction?.backtest?.total_return ?? NaN) * 100)}</h4>
+                </article>
+                <article className="backtest-card">
+                  <p className="card-label">Trades</p>
+                  <h4>{formatTradeCount(dashboard.prediction?.backtest?.number_of_trades)}</h4>
+                </article>
+                <article className="backtest-card">
+                  <p className="card-label">Final Portfolio</p>
+                  <h4>{formatCurrency(dashboard.prediction?.backtest?.final_portfolio_value)}</h4>
+                </article>
+              </div>
+            </section>
+
+            <section className="history-panel subdued-panel">
+              <div className="section-heading">
+                <h3>Recent closes</h3>
+                <p>Latest five trading sessions from the backend history feed.</p>
+              </div>
+
+              <div className="history-list">
+                {dashboard.history.length > 0 ? (
+                  dashboard.history.map((item) => (
+                    <article className="history-row" key={item.date}>
+                      <span>{item.date}</span>
+                      <strong>{formatCurrency(item.close)}</strong>
+                    </article>
+                  ))
+                ) : (
+                  <article className="history-row">
+                    <span>History unavailable</span>
+                    <strong>Retrying backend feed</strong>
+                  </article>
+                )}
+              </div>
+            </section>
+
+            <section className="news-panel subdued-panel" style={{ marginTop: "32px", marginBottom: "32px" }}>
+              <div className="section-heading">
+                <h3>Latest Market Drivers</h3>
+                <p>Recent news headlines processed for sentiment.</p>
+              </div>
+              <div className="history-list">
+                {newsArticles.slice(0, 7).map((article, i) => {
+                  const cleanedDescription = article.description ? article.description.replace(/<[^>]*>?/gm, "").replace(/&nbsp;/g, " ").trim() : "";
+                  const isRedundant = cleanedDescription.includes(article.title) || article.title.includes(cleanedDescription);
+                  const urlMatch = article.description && typeof article.description === 'string' ? article.description.match(/href="([^"]+)"/) : null;
+                  const targetLink = article.link || (urlMatch ? urlMatch[1] : null);
+
+                  return (
+                    <article className="history-row" key={i} style={{ flexDirection: "column", alignItems: "flex-start", gap: "6px", padding: "16px" }}>
+                      {targetLink ? (
+                        <a href={targetLink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: "4px", color: "inherit", zIndex: 10 }}>
+                          <strong style={{ fontSize: "1rem", lineHeight: "1.3" }}>{article.title}</strong>
+                        </a>
+                      ) : (
+                        <strong style={{ fontSize: "1rem", lineHeight: "1.3" }}>{article.title}</strong>
+                      )}
+                      {!isRedundant && cleanedDescription && <span style={{ fontSize: "0.85rem", color: "#666", lineHeight: "1.4" }}>{cleanedDescription}</span>}
+                    </article>
+                  );
+                })}
+                {newsArticles.length === 0 && <article className="history-row">No latest news available.</article>}
+              </div>
+            </section>
+          </>
+        )}
+      </main>
+    </>
   );
 }
 

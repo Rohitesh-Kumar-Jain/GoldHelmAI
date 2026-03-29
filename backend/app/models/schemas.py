@@ -81,6 +81,7 @@ class PredictResponse(BaseModel):
     validation_mae: float
     risk_level: str
     sentiment: SentimentPayload
+    indicator_score: dict[str, Any]
     technical_indicators: dict[str, dict[str, Any]]
     indicator_summary: IndicatorSummary
     indicator_charts: dict[str, Any]
