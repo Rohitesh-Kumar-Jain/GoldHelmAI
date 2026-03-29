@@ -1065,11 +1065,11 @@ function App() {
         <section className="hero compact-hero" style={{ paddingTop: "12px", paddingBottom: "24px" }}>
           <div className="hero-brand" style={{ display: "block" }}>
             <div className="hero-copy">
-              <p className="eyebrow">Trading Intelligence Dashboard</p>
+              <p className="eyebrow">Gold Trading Intelligence</p>
               <h1>Explainable gold signals for the next trading session.</h1>
               <p className="hero-text">
-                Decision, confidence, disagreement, and market context are surfaced first so the dashboard reads like a
-                trading system, not just a model output page.
+                A decision-first AI trading system:
+GoldHelm combines machine learning, reinforcement learning, sentiment analysis, and technical indicators delivering explainable decisions with confidence and signal alignment.
               </p>
             </div>
           </div>
