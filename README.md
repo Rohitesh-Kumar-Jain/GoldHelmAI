@@ -4,7 +4,7 @@
 
 ---
 
-## 🏗️ System Architecture
+## System Architecture
 
 GoldHelm follows a decoupled, cloud-native architecture optimized for real-time inference and explainable outputs.
 
@@ -62,7 +62,7 @@ flowchart TD
 
 ---
 
-## 🧠 The Intelligence Stack
+## The Intelligence Stack
 
 ### 1. Multi-Agent Orchestration
 GoldHelm doesn't just return a raw number; it hosts a "Debate" between three distinct AI agents to reach a final consensus:
@@ -102,7 +102,7 @@ Indicator signals are normalized into a continuous score using a Weighted Conflu
 
 ---
 
-## 🌊 Data Architecture
+## Data Architecture
 
 ### Data Flow Diagram (DFD)
 The movement of data from raw API extraction to final visual rendering.
@@ -159,7 +159,7 @@ flowchart TD
 
 ---
 
-## 🔄 End-to-End Sequence
+## End-to-End Sequence
 The sequence of events triggered when a user opens the dashboard.
 
 ```mermaid
@@ -211,7 +211,7 @@ sequenceDiagram
 
 ---
 
-## 🚀 Setup & Deployment
+## Setup & Deployment
 
 ### Backend (Python 3.11+)
 ```bash
@@ -231,7 +231,7 @@ npm run dev
 
 ---
 
-## 🛠️ Infrastructure Overview
+## Infrastructure Overview
 ```mermaid
 flowchart TD
     User[User Browser]
