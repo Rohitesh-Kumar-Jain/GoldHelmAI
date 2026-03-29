@@ -1,117 +1,257 @@
-# AuricAI
+# 🔱 GoldHelm AI
 
-AuricAI is a production-style V1 for gold futures analysis and next-trading-day prediction. The stack uses FastAPI for the API, a lightweight tree-based regression model for inference, `yfinance` for market data, and a Vite/React frontend for the dashboard.
+**GoldHelm AI** is a production-grade multi-agent financial intelligence platform designed for next-day gold futures forecasting and explainable trading decision support. It bridges the gap between deep machine learning signals and human-readable market context.
 
-## Current Architecture
+---
 
-```text
-AuricAI/
-├── backend/
-│   ├── app/
-│   │   ├── main.py
-│   │   ├── models/
-│   │   ├── routes/
-│   │   ├── services/
-│   │   └── utils/
-│   ├── data/
-│   └── requirements.txt
-├── frontend/
-│   ├── public/
-│   └── src/
-└── README.md
+## 🏗️ System Architecture
+
+GoldHelm follows a decoupled, cloud-native architecture optimized for real-time inference and explainable outputs.
+
+```mermaid
+flowchart TD
+
+    User[User]
+
+    subgraph Frontend [Frontend - Vercel]
+        UI[React + Vite Dashboard]
+    end
+
+    subgraph Backend [Backend - FastAPI on Render]
+        
+        subgraph Ingestion
+            YF[Yahoo Finance API]
+            GN[Google News RSS]
+        end
+
+        subgraph Services
+            IE[Indicator Engine]
+            SS[Scoring Service]
+            NS[Sentiment Service]
+        end
+
+        subgraph Agents
+            RA[Reasoning Agent]
+            RL[RL Agent (Q-Learning)]
+            CA[Coordinator Agent]
+        end
+
+        Payload[Dashboard Payload API]
+    end
+
+    User --> UI
+    UI -->|REST API| Payload
+
+    Payload --> IE
+    Payload --> NS
+
+    YF --> IE
+    GN --> NS
+
+    IE --> SS
+    NS --> SS
+
+    SS --> RA
+    SS --> RL
+
+    RA --> CA
+    RL --> CA
+
+    CA --> Payload
 ```
 
-## Backend Setup
+---
 
+## 🧠 The Intelligence Stack
+
+### 1. Multi-Agent Orchestration
+GoldHelm doesn't just return a raw number; it hosts a "Debate" between three distinct AI agents to reach a final consensus:
+
+*   **Reasoning Agent:** A deterministic logical engine that processes technical signals into human-readable rationales.
+*   **RL Policy Agent:** A Q-Learning agent trained on rewards (profit/loss) that suggests an optimal trading action based on the current market state.
+*   **Coordinator Agent:** The final decision-maker. It evaluates the "Trust Grid"—if the reasoning and RL agents disagree, it dynamically shifts the final decision to **HOLD** to manage risk.
+
+### 2. RL Agent State Machine
+The Reinforcement Learning agent transitions through these states based on signal confidence and reward history:
+
+```mermaid
+stateDiagram-v2
+    [*] --> Neutral
+
+    Neutral --> Bullish : Positive Signals
+    Neutral --> Bearish : Negative Signals
+
+    Bullish --> Buy : Strong Confidence
+    Bearish --> Sell : Strong Confidence
+
+    Buy --> Hold : Profit Taken
+    Sell --> Hold : Position Closed
+
+    Hold --> Neutral : Reset State
+```
+
+### 3. The Weighted Scoring Engine (`[-100, 100]`)
+Indicator signals are normalized into a continuous score using a Weighted Confluence logic:
+
+| Cluster | Weight | Indicators Included |
+| :--- | :--- | :--- |
+| **Trend** | 40% | EMA(20), EMA(50), ADX Strength |
+| **Momentum** | 30% | RSI(14), MACD Crossovers, Stochastic |
+| **Volatility** | 15% | Bollinger Band Width, ATR Volatility |
+| **Structure** | 15% | Fibonacci Retracement, On-Balance Volume |
+
+---
+
+## 🌊 Data Architecture
+
+### Data Flow Diagram (DFD)
+The movement of data from raw API extraction to final visual rendering.
+
+```mermaid
+flowchart LR
+    RawData[Market Data + News]
+    Processing[Feature Engineering]
+    Indicators[Technical Indicators]
+    Sentiment[Sentiment Scores]
+    Fusion[Signal Fusion Engine]
+    Agents[AI Agents]
+    Decision[Final Decision]
+    UI[Dashboard]
+
+    RawData --> Processing
+    Processing --> Indicators
+    Processing --> Sentiment
+
+    Indicators --> Fusion
+    Sentiment --> Fusion
+
+    Fusion --> Agents
+    Agents --> Decision
+    Decision --> UI
+```
+
+### ML Pipeline (Offline + Online)
+GoldHelm maintains a separate pipeline for batch training and real-time inference.
+
+```mermaid
+flowchart TD
+    subgraph Offline Training
+        D1[Historical Data]
+        F1[Feature Engineering]
+        M1[Model Training]
+        E1[Evaluation]
+        R1[Model Registry]
+    end
+
+    subgraph Online Inference
+        D2[Live Market Data]
+        F2[Real-time Features]
+        M2[Loaded Model]
+        P1[Prediction]
+    end
+
+    R1 --> M2
+
+    D2 --> F2
+    F2 --> M2
+    M2 --> P1
+```
+
+---
+
+## 🔄 End-to-End Sequence
+The sequence of events triggered when a user opens the dashboard.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant YahooAPI
+    participant NewsAPI
+    participant IndicatorEngine
+    participant SentimentService
+    participant ScoringService
+    participant RLAgent
+    participant ReasoningAgent
+    participant Coordinator
+
+    User->>Frontend: Open Dashboard
+    Frontend->>Backend: GET /dashboard
+
+    Backend->>YahooAPI: Fetch gold price data
+    Backend->>NewsAPI: Fetch headlines
+
+    YahooAPI-->>Backend: Market data
+    NewsAPI-->>Backend: News data
+
+    Backend->>IndicatorEngine: Compute indicators
+    Backend->>SentimentService: Analyze sentiment
+
+    IndicatorEngine-->>Backend: Indicator signals
+    SentimentService-->>Backend: Sentiment scores
+
+    Backend->>ScoringService: Generate confluence score
+
+    ScoringService-->>Backend: Score [-100,100]
+
+    Backend->>RLAgent: Predict action
+    Backend->>ReasoningAgent: Generate explanation
+
+    RLAgent-->>Backend: Action (Buy/Sell/Hold)
+    ReasoningAgent-->>Backend: Rationale
+
+    Backend->>Coordinator: Resolve decision
+
+    Coordinator-->>Backend: Final Decision + Risk
+
+    Backend-->>Frontend: Dashboard Payload
+    Frontend-->>User: Render UI (Charts + Debate + Score)
+```
+
+---
+
+## 🚀 Setup & Deployment
+
+### Backend (Python 3.11+)
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate
+python -m venv venv
+source venv/bin/activate
 pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-Notes:
-
-- The correct Uvicorn target is `app.main:app`.
-- Market endpoints are served under `/api`.
-- `ALLOWED_ORIGINS` should include the deployed Vercel domain.
-
-## Frontend Setup
-
+### Frontend (React / Vite)
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Set `VITE_API_BASE_URL` when the backend runs on a non-default URL.
+---
 
-## API Endpoints
+## 🛠️ Infrastructure Overview
+```mermaid
+flowchart TD
+    User[User Browser]
 
-- `GET /health`
-- `GET /api/price`
-- `GET /api/history`
-- `GET /api/predict`
+    subgraph Frontend
+        Vercel[Vercel CDN + React App]
+    end
 
-`/api/predict` returns:
+    subgraph Backend
+        Render[FastAPI on Render]
+    end
 
-- Latest prediction price
-- Predicted percentage move
-- Confidence score derived from validation error
-- Validation MAE for recent holdout data
+    subgraph DataSources
+        Yahoo[Yahoo Finance API]
+        News[Google News RSS]
+    end
 
-## Deployment Notes
+    User --> Vercel
+    Vercel --> Render
 
-### Render Backend
-
-- Start command: `uvicorn app.main:app --host 0.0.0.0 --port 8000`
-- Root directory: `backend`
-- Environment variables:
-  - `APP_ENV=production`
-  - `ALLOWED_ORIGINS=https://your-frontend-domain.vercel.app`
-  - `DATA_LOOKBACK_DAYS=180`
-  - `MODEL_MIN_ROWS=45`
-
-### Vercel Frontend
-
-- Root directory: `frontend`
-- Build command: `npm run build`
-- Output directory: `dist`
-- Environment variable:
-  - `VITE_API_BASE_URL=https://your-render-service.onrender.com`
-
-## Recommended Next Structure
-
-If the project grows, keep the current layout but add these modules incrementally rather than rewriting:
-
-- `app/core/` for logging, exception handlers, and shared app wiring
-- `app/repositories/` if database persistence is introduced
-- `app/ml/` for training jobs, backtesting, and model artifact persistence
-- `tests/` for API, data, and model behavior coverage
-# GoldHelmAI
-
-<img width="1408" height="768" alt="Gemini_Generated_Image_s9cbnts9cbnts9cb (1)" src="https://github.com/user-attachments/assets/8b15384d-b6ae-4477-8310-5031067685d5" />
-
-System Architecture Diagram
-
-<img width="1897" height="1856" alt="mermaid-diagram (2)" src="https://github.com/user-attachments/assets/deae3bb5-abe4-47e7-95ad-f2186af5d342" />
-
-Sequence Diagram (End-to-End Flow)
-
-<img width="4728" height="2262" alt="mermaid-diagram (3)" src="https://github.com/user-attachments/assets/1ded919f-e0b1-46e1-af29-ff4ef131cb19" />
-
-RL Agent State Machine
-
-<img width="822" height="871" alt="mermaid-diagram (6)" src="https://github.com/user-attachments/assets/adace017-71c1-48cf-b519-f5170d73e5a1" />
-
-ML Pipeline Diagram (Offline + Online)
-
-<img width="2811" height="920" alt="mermaid-diagram (5)" src="https://github.com/user-attachments/assets/bfd013e8-0e11-43f2-8488-2ab643d30cbc" />
-
-Data Flow Diagram (DFD)
-
-<img width="3098" height="326" alt="mermaid-diagram (4)" src="https://github.com/user-attachments/assets/cc9c231b-0173-40a0-bb21-1ef19bcd79da" />
-
-
-
+    Render --> Yahoo
+    Render --> News
+```
