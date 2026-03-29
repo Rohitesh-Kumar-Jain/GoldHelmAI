@@ -32,7 +32,7 @@ flowchart TD
 
         subgraph Agents
             RA[Reasoning Agent]
-            RL[RL Agent (Q-Learning)]
+            RL[RL Agent]
             CA[Coordinator Agent]
         end
 
