@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import requests
 import yfinance as yf
 
 from app.utils.config import get_settings
@@ -34,6 +35,13 @@ class GoldDataService:
         self._cache_loaded_at: datetime | None = None
         self._last_fetch_failed_at: datetime | None = None
 
+        self._session = requests.Session()
+        self._session.headers.update(
+            {
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+            }
+        )
+
     def fetch_price_history(self) -> pd.DataFrame:
         if self._is_memory_cache_fresh():
             return self._in_memory_cache.copy()
@@ -53,6 +61,7 @@ class GoldDataService:
                 progress=False,
                 auto_adjust=False,
                 threads=False,
+                session=self._session,
             )
             if raw.empty:
                 raise DataUnavailableError("yfinance returned an empty dataset.")
