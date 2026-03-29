@@ -1518,9 +1518,18 @@ function App() {
                 {newsArticles.slice(0, 7).map((article, i) => {
                   const cleanedDescription = article.description ? article.description.replace(/<[^>]*>?/gm, "").replace(/&nbsp;/g, " ").trim() : "";
                   const isRedundant = cleanedDescription.includes(article.title) || article.title.includes(cleanedDescription);
+                  const urlMatch = article.description && typeof article.description === 'string' ? article.description.match(/href="([^"]+)"/) : null;
+                  const targetLink = article.link || (urlMatch ? urlMatch[1] : null);
+
                   return (
                     <article className="history-row" key={i} style={{ flexDirection: "column", alignItems: "flex-start", gap: "6px", padding: "16px" }}>
-                      <strong style={{ fontSize: "1rem", lineHeight: "1.3" }}>{article.title}</strong>
+                      {targetLink ? (
+                        <a href={targetLink} target="_blank" rel="noopener noreferrer" style={{ textDecoration: "underline", textDecorationColor: "var(--border)", textUnderlineOffset: "4px", color: "inherit", zIndex: 10 }}>
+                          <strong style={{ fontSize: "1rem", lineHeight: "1.3" }}>{article.title}</strong>
+                        </a>
+                      ) : (
+                        <strong style={{ fontSize: "1rem", lineHeight: "1.3" }}>{article.title}</strong>
+                      )}
                       {!isRedundant && cleanedDescription && <span style={{ fontSize: "0.85rem", color: "#666", lineHeight: "1.4" }}>{cleanedDescription}</span>}
                     </article>
                   );

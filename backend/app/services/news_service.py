@@ -56,6 +56,7 @@ class NewsService:
         for item in items[: self.settings.news_article_limit * 2]:
             title = (item.findtext("title") or "").strip()
             description = (item.findtext("description") or "").strip()
+            link = (item.findtext("link") or "").strip()
             published_at = self._parse_published_at(item.findtext("pubDate"))
             if not title and not description:
                 continue
@@ -64,6 +65,7 @@ class NewsService:
                 {
                     "title": title,
                     "description": description,
+                    "link": link,
                     "published_at": published_at,
                 }
             )
@@ -97,16 +99,19 @@ class NewsService:
             {
                 "title": "Gold steadies as investors weigh inflation and rate outlook",
                 "description": "Markets remain focused on inflation signals and the next Federal Reserve decision.",
+                "link": "https://finance.yahoo.com/news/gold-steadies",
                 "published_at": now.isoformat(),
             },
             {
                 "title": "USD softness supports gold prices ahead of macro data",
                 "description": "A softer dollar and cautious risk sentiment keep attention on bullion demand.",
+                "link": "https://finance.yahoo.com/news/usd-softness",
                 "published_at": now.isoformat(),
             },
             {
                 "title": "Interest-rate uncertainty keeps gold traders defensive",
                 "description": "Analysts expect rate guidance to shape near-term moves in gold futures.",
+                "link": "https://finance.yahoo.com/news/interest-rate-uncertainty",
                 "published_at": now.isoformat(),
             },
         ]
