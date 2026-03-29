@@ -90,3 +90,28 @@ If the project grows, keep the current layout but add these modules incrementall
 - `app/ml/` for training jobs, backtesting, and model artifact persistence
 - `tests/` for API, data, and model behavior coverage
 # GoldHelmAI
+
+<img width="1408" height="768" alt="Gemini_Generated_Image_s9cbnts9cbnts9cb (1)" src="https://github.com/user-attachments/assets/8b15384d-b6ae-4477-8310-5031067685d5" />
+
+System Architecture Diagram
+
+<img width="1897" height="1856" alt="mermaid-diagram (2)" src="https://github.com/user-attachments/assets/deae3bb5-abe4-47e7-95ad-f2186af5d342" />
+
+Sequence Diagram (End-to-End Flow)
+
+<img width="4728" height="2262" alt="mermaid-diagram (3)" src="https://github.com/user-attachments/assets/1ded919f-e0b1-46e1-af29-ff4ef131cb19" />
+
+RL Agent State Machine
+
+<img width="822" height="871" alt="mermaid-diagram (6)" src="https://github.com/user-attachments/assets/adace017-71c1-48cf-b519-f5170d73e5a1" />
+
+ML Pipeline Diagram (Offline + Online)
+
+<img width="2811" height="920" alt="mermaid-diagram (5)" src="https://github.com/user-attachments/assets/bfd013e8-0e11-43f2-8488-2ab643d30cbc" />
+
+Data Flow Diagram (DFD)
+
+<img width="3098" height="326" alt="mermaid-diagram (4)" src="https://github.com/user-attachments/assets/cc9c231b-0173-40a0-bb21-1ef19bcd79da" />
+
+
+
